@@ -1,5 +1,14 @@
 #pragma once
 #include <QMainWindow>
+#include <string>
+#include <QTableWidget>
+#include <QFile>
+#include <QDir>
+#include <QStandardPaths>
+#include <QDebug>
+#include <QProcess>
+#include <QCoreApplication>
+#include <QScroller>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -15,6 +24,15 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    void onStartButton();
+    void onReceivePacket();
+    void onDaemonOutput();
+    void onDaemonError();
 private:
     Ui::MainWindow *ui;
+
+    bool isRunning;
+    QProcess *daemonProcess;
 };
+
+static QString dropPcapDaemon();
