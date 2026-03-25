@@ -1,7 +1,16 @@
 #pragma once
-class device
+#include <pcap/pcap.h>
+#include <string>
+#include <vector>
+
+class Device
 {
 public:
-    device();
+    static Device& getInstance();
+    std::vector<std::string> getDevice();
+private:
+    Device();
+    ~Device();
+    Device(const Device& device) = delete;
+    Device& operator=(const Device&) = delete;
 };
-

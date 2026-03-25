@@ -6,8 +6,11 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 데몬 먼저 빌드
+add_subdirectory(suseong)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
@@ -24,11 +27,17 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
         device.h device.cpp
+        suseongtrace.h suseongtrace.cpp
     )
+
+# 안드로이드 빌드에 경우 패키지 소스 지정
 # Define target properties for Android with Qt 6 as:
-#    set_property(TARGET SuNiffing APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+#if(ANDROID)
+    set_target_properties(SuNiffing PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
 # For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
+#endif()
+
 else()
     if(ANDROID)
         add_library(SuNiffing SHARED
@@ -44,6 +53,26 @@ else()
 endif()
 
 target_link_libraries(SuNiffing PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+
+# APPLE -> 테스트, ANDROID -> 빌드
+if(APPLE)
+    target_link_libraries(SuNiffing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../libpcap/build/Qt_6_10_2_for_macOS-Debug/libpcap.a")
+elseif(ANDROID)
+    target_link_libraries(SuNiffing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../libpcap/build/Qt_6_10_2_for_Android_arm64_v8a-Debug/libpcap.a")
+endif()
+
+# pcap 헤더 파일 포함 | pcap 소스 파일에서 VERSION 파일 이름 변경 필요
+target_include_directories(SuNiffing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../libpcap")
+
+
+# llvm-strip
+if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
+    add_custom_command(TARGET ssdaemon POST_BUILD
+        COMMAND llvm-strip --strip-all $<TARGET_FILE:ssdaemon>
+    )
+endif()
+
+
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
