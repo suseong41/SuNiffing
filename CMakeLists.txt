@@ -28,6 +28,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         ${PROJECT_SOURCES}
         device.h device.cpp
         suseongtrace.h suseongtrace.cpp
+        runner.h runner.cpp
     )
 
 # 안드로이드 빌드에 경우 패키지 소스 지정
