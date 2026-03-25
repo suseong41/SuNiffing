@@ -10,6 +10,7 @@ MainWindow::MainWindow(QWidget *parent)
     this->setWindowTitle("SuNiffing");
 
 
+
     daemonProcess = new QProcess(this);
     connect(daemonProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onDaemonOutput);
     connect(daemonProcess, &QProcess::readyReadStandardError, this, &MainWindow::onDaemonError);
@@ -25,6 +26,39 @@ MainWindow::~MainWindow()
         }
     }
     delete ui;
+}
+
+void MainWindow::runDaemon()
+{
+    QStringList args;
+#ifdef Q_OS_ANDROID
+    QString targetPath = dropPcapDaemon();
+    if(targetPath != "")
+    {
+        args << "-c" << targetPath << QString::fromStdString(devType);
+        daemonProcess->start("su", args);
+    }
+#elif defined(Q_OP_MAC)
+    QString targetPath = QCoreApplictation::applicationDirPath() + "/suseongdaemon";
+    args << QString::fromStdString(devType);
+    daemonProcess->start(targetPath,args);
+#endif
+
+    return;
+}
+
+void MainWindow::killDaemon()
+{
+    isRunning = false;
+    if(daemonProcess != nullptr)
+    {
+        if(daemonProcess->state() == QProcess::Running)
+        {
+            daemonProcess->kill();
+        }
+    }
+
+    return;
 }
 
 void MainWindow::onStartButton() {}

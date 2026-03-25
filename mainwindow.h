@@ -29,8 +29,11 @@ public:
     void onDaemonOutput();
     void onDaemonError();
 private:
+    void runDaemon();
+    void killDaemon();
     Ui::MainWindow *ui;
 
+    std::string devType;
     bool isRunning;
     QProcess *daemonProcess;
 };
