@@ -62,7 +62,8 @@ void MainWindow::killDaemon()
 }
 
 void MainWindow::onStartButton() {}
-void MainWindow::onReceivePacket() {}
+void MainWindow::onStopButton() {}
+void MainWindow::onRender() {}
 void MainWindow::onDaemonOutput(){}
 void MainWindow::onDaemonError() {}
 

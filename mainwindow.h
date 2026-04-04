@@ -25,7 +25,8 @@ public:
     ~MainWindow();
 
     void onStartButton();
-    void onReceivePacket();
+    void onStopButton();
+    void onRender();
     void onDaemonOutput();
     void onDaemonError();
 private:

@@ -1,9 +1,16 @@
-#include <iostream>
+#include "../suseongtrace.h"
+#include <stdio.h>
+#include <string>
 
-using namespace std;
-
-int main()
+int main(int argc, char* argv[])
 {
-    cout << "Hello World!" << endl;
+    if(argc < 2)
+    {
+        TRACE("No Device Detected");
+        return 1;
+    }
+
+    std::string devName = argv[1];
+
     return 0;
 }
