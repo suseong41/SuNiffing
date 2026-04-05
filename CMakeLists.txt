@@ -29,6 +29,9 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         device.h device.cpp
         suseongtrace.h suseongtrace.cpp
         runner.h runner.cpp
+        radiotap.h radiotap.cpp
+        wireless.h wireless.cpp
+        mac.h
     )
 
 # 안드로이드 빌드에 경우 패키지 소스 지정

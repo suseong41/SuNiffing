@@ -25,7 +25,7 @@ std::vector<std::string> Device::getDevice()
 
     for (d = alldevs; d != NULL; d = d->next)
     {
-        if(d->description)
+        if(d->name != NULL)
         {
             devList.push_back(std::string(d->name));
         }
