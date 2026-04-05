@@ -32,6 +32,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         radiotap.h radiotap.cpp
         wireless.h wireless.cpp
         mac.h
+        mac.cpp
     )
 
 # 안드로이드 빌드에 경우 패키지 소스 지정

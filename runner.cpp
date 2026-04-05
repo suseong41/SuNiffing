@@ -1,5 +1,8 @@
 #include "runner.h"
 #include "suseongtrace.h"
+#include "mac.h"
+#include "radiotap.h"
+#include "wireless.h"
 
 Runner::Runner()
 {
@@ -9,6 +12,12 @@ Runner::Runner()
 Runner::~Runner()
 {
     stop();
+}
+
+static std::map<ST_INFO, std::string> printDump()
+{
+    std::map<ST_INFO, std::string> print;
+    return print;
 }
 
 void Runner::run(const std::string& dev)

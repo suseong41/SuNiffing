@@ -6,7 +6,17 @@
 #pragma pack(push, 1)
 struct ST_INFO
 {
-    // 통신 구조 작성
+    std::string BSSID;
+    std::string PWR;
+    std::string BEACONS;
+    std::string DATA;
+    //std::string s;
+    std::string CH;
+    //std::string MB;
+    std::string ENC;
+    //std::string CIPHER;
+    //std::string AUTH;
+    std::string ESSID;
 };
 #pragma pack(pop)
 
