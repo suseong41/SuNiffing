@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "./device.h"
 #include "./ui_mainwindow.h"
+#include "./display.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -49,7 +50,8 @@ void MainWindow::runDaemon()
     QString targetPath = dropPcapDaemon();
     if(targetPath != "")
     {
-        args << "-c" << targetPath << QString::fromStdString(devType);
+        QString cmd = QString("%1 %2").arg(targetPath, QString::fromStdString(devType));
+        args << "-c" << cmd;
         daemonProcess->start("su", args);
     }
 #elif defined(Q_OS_MAC)
@@ -93,14 +95,12 @@ void MainWindow::onStartButton()
     ui->devIn->setEnabled(false);
 
     QString cmd = QString("svc wifi disable; "
-                          "sleep 1; "
                           "ifconfig %1 down; "
                           "ifconfig %1 up; "
-                          "sleep 1; "
                           "nexutil -c1; "
                           "nexutil -d; "
                           "nexutil -k1; "
-                          "nexutil -s0x613 -i -v2").arg(dev);
+                          "nexutil -g0x613 -i -v2").arg(dev);
 
     qDebug() << "[EXEC] " << cmd;
     QProcess p;
@@ -121,8 +121,9 @@ void MainWindow::onStopButton()
 {
     if(!isRunning) return;
     killDaemon();
-
-    QString cmd = QString("su -c 'nexutil -m0 && svc wifi enable'");
+    // todo: interface down , up
+    QString dev = ui->devIn->currentText();
+    QString cmd = QString("su -c 'nexutil -m0 && svc wifi enable && ifconfig %1 down && ifconfig %1 up'").arg(dev);
     int res = std::system(cmd.toStdString().c_str());
     if(res != 0)
     {
@@ -134,8 +135,63 @@ void MainWindow::onStopButton()
 
 }
 void MainWindow::onRender() {}
-void MainWindow::onDaemonOutput(){}
-void MainWindow::onDaemonError() {}
+
+void MainWindow::onDaemonOutput()
+{
+    if(daemonProcess == nullptr) return;
+
+    QByteArray output = daemonProcess->readAllStandardOutput();
+    QList<QByteArray> lines = output.split('\n');
+    static QRegularExpression re("BSSID:\\s*([0-9a-fA-F:]+)\\s*PWR:\\s*(-?\\d+)\\s*CH:\\s*(\\d+)\\s*ESSID:\\s*(.*)");
+
+    for(const QByteArray& line : lines)
+    {
+        QString strLine = QString::fromUtf8(line.trimmed());
+        if(strLine.isEmpty() || !strLine.contains("BSSID:")) continue;
+
+        QRegularExpressionMatch match = re.match(strLine);
+        if(match.hasMatch())
+        {
+            QString bssid = match.captured(1);
+            QString pwr = match.captured(2);
+            QString ch = match.captured(3);
+            QString essid = match.captured(4);
+            if(displayItem.contains(bssid))
+            {
+                QListWidgetItem* item = displayItem[bssid];
+                display* row = qobject_cast<display*>(ui->listWidget->itemWidget(item));
+                if(row)
+                {
+                    row->updateInfo(pwr, ch);
+                }
+
+            }
+            else
+            {
+                QListWidgetItem* item = new QListWidgetItem(ui->listWidget);
+                display* widget = new display(this);
+                widget->setInfo(bssid, pwr, ch, essid);
+                item->setSizeHint(widget->sizeHint());
+                ui->listWidget->addItem(item);
+                ui->listWidget->setItemWidget(item, widget);
+
+                displayItem.insert(bssid, item);
+            }
+        }
+
+    }
+}
+
+void MainWindow::onDaemonError()
+{
+    if(daemonProcess == nullptr) return;
+
+    QByteArray error = daemonProcess->readAllStandardError();
+    if(!error.isEmpty())
+    {
+        qDebug() << "[DAEMON ERROR]" << error.trimmed();
+    }
+}
 
 static QString dropPcapDaemon()
 {
@@ -150,7 +206,7 @@ static QString dropPcapDaemon()
         dir.mkpath(".");
     }
 
-    QString targetPath = targetDir + "/ssdaemon";
+    QString targetPath = targetDir + "/suseong";
     QFile targetFile(targetPath);
 
     if(targetFile.exists())
@@ -159,7 +215,7 @@ static QString dropPcapDaemon()
         targetFile.remove();
     }
     // assets에서 추출해옴
-    QFile assetFile("assets:/ssdaemon");
+    QFile assetFile("assets:/suseong");
 
     // chmod 755
     if(assetFile.copy(targetPath))

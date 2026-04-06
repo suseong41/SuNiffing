@@ -10,6 +10,8 @@
 #include <QCoreApplication>
 #include <QScroller>
 #include <QMessageBox>
+#include <QMap>
+#include <QListWidget>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -38,6 +40,8 @@ private:
     std::string devType;
     bool isRunning;
     QProcess *daemonProcess;
+
+    QMap<QString, QListWidgetItem*> displayItem;
 };
 
 static QString dropPcapDaemon();

@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SOURCES
     main.cpp
     ../suseongtrace.h ../suseongtrace.cpp
+    ../runner.h ../runner.cpp
+    ../wireless.h ../wireless.cpp
+    ../radiotap.h ../radiotap.cpp
+    ../mac.h ../mac.cpp
 )
 
 add_executable(suseong ${SOURCES})

@@ -33,6 +33,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         wireless.h wireless.cpp
         mac.h
         mac.cpp
+        display.h display.cpp display.ui
     )
 
 # 안드로이드 빌드에 경우 패키지 소스 지정

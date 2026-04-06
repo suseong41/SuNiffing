@@ -18,7 +18,7 @@ struct ST_WL
 };
 struct ST_BC_COMMON
 {
-    uint16_t timestamp;
+    uint64_t timestamp;
     uint16_t interval;
     uint16_t capacity;
 };

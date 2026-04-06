@@ -12,6 +12,13 @@ ST_BC_COMMON capBc(const u_char* packet)
     return *pHdr;
 }
 
+bool chkBeacon(ST_WL target)
+{
+    if((target.frameControl & 0x00FF) == 0x80) return true;
+
+    return false;
+}
+
 std::string getEssid(const u_char* packet, const int beaconLen)
 {
     std::vector<std::vector<std::string>> info;
