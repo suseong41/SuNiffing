@@ -1,16 +1,8 @@
 #include "mac.h"
 
-std::string prtMac(ST_MAC mac)
+void prtMac(char* dest, uint64_t size, ST_MAC mac)
 {
-    std::string prt = "";
-    char buf[4];
-    for (int i=0; i<sizeof(mac); i++)
-    {
-        sprintf(buf, "%02X", mac.mac[i]);
-        prt += buf;
-
-        if ( i != 5) prt += ":";
-    }
-
-    return prt;
+    snprintf(dest, size, "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac.mac[0], mac.mac[1], mac.mac[2],
+             mac.mac[3], mac.mac[4], mac.mac[5]);
 }

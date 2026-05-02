@@ -16,7 +16,7 @@ public:
     ~display();
 
     void setInfo(const QString& bssid, const QString& pwr, const QString& ch, const QString& essid);
-    void updateInfo(const QString& pwr, const QString& ch);
+    void updateInfo(const QString& essid, const QString& pwr, const QString& ch);
 
 private:
     Ui::display *ui;

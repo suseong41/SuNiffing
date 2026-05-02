@@ -51,9 +51,9 @@ int presentCount(const u_char* packet)
 }
 
 // PWR은 present에서 5| Antena Signal 부분.
-std::map<std::string, int> getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount)
+ST_RDT_DATA getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount)
 {
-    std::map<std::string, int> info;
+    ST_RDT_DATA data;
     uint32_t present = rdt->present;
     int offset = 4 + 4*presentCount;
 
@@ -74,7 +74,7 @@ std::map<std::string, int> getRdtInfo(const u_char* packet, ST_RDT *rdt, int pre
     {
         while ( (offset % 2) != 0 ) offset++;
         uint16_t freq = *(uint16_t*)(packet + offset);
-        info["CH"] = channelFromMhz(freq); // 0 is None
+        data.ch = channelFromMhz(freq); // 0 is None
         offset += 4;
     }
     if ((present & (1<<4)) != 0) // 4. FHSS
@@ -84,10 +84,10 @@ std::map<std::string, int> getRdtInfo(const u_char* packet, ST_RDT *rdt, int pre
     }
     if ((present & (1<<5)) != 0) // 5. Antenna Signal
     {
-        info["PWR"] = (int8_t)packet[offset]; // 999 is None
+        data.pwr = (int8_t)packet[offset]; // 999 is None
     }
 
-    return info;
+    return data;
 }
 
 

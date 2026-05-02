@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package ipc;
+
+message Command
+{
+    enum Action
+    {
+        IDLE = 0;
+        SNIFF = 1;
+        DEAUTH = 2;
+        CAS = 3;
+        STOP = 4;
+    }
+    Action action = 1;   
+    string interface = 2;
+    string ap_bssid = 3;
+    string mac = 4;
+    int32 channel = 5;
+}
+
+message Event
+{
+    enum EventType
+    {
+        WIFI_INFO = 0;
+        ATTACK_LOG = 1;
+        ERROR = 2;
+    }
+    EventType type = 1;
+    string bssid = 2;
+    string essid = 3;
+    int32 pwr = 4;
+    int32 ch = 5;
+    string logMessage = 6;
+}

@@ -1,7 +1,11 @@
 #include "mainwindow.h"
 #include "./device.h"
 #include "./ui_mainwindow.h"
+#include "./runner.h"
 #include "./display.h"
+#include "./ipc_proto.h"
+
+// TODO: 라디오탭 CH가 아니라, tag 3에서 파싱해오자
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -29,6 +33,15 @@ MainWindow::MainWindow(QWidget *parent)
     daemonProcess = new QProcess(this);
     connect(daemonProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onDaemonOutput);
     connect(daemonProcess, &QProcess::readyReadStandardError, this, &MainWindow::onDaemonError);
+
+    // 꾹 눌렀을 때 메뉴
+    ui->listWidget->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->listWidget, &QListWidget::customContextMenuRequested, this, &MainWindow::showContents);
+    ui->listWidget->viewport()->installEventFilter(this);
+    ui->listWidget->viewport()->grabGesture(Qt::TapAndHoldGesture);
+
+    // 홉핑 채널
+    ui->currentCh->setStyleSheet("color: #87CEFA; font-weight: bold;");
 }
 
 MainWindow::~MainWindow()
@@ -63,20 +76,6 @@ void MainWindow::runDaemon()
     return;
 }
 
-void MainWindow::killDaemon()
-{
-    isRunning = false;
-    if(daemonProcess != nullptr)
-    {
-        if(daemonProcess->state() == QProcess::Running)
-        {
-            daemonProcess->kill();
-        }
-    }
-
-    return;
-}
-
 void MainWindow::onStartButton()
 {
     // 앱: 데몬 실행
@@ -94,13 +93,13 @@ void MainWindow::onStartButton()
     devType = dev.toStdString();
     ui->devIn->setEnabled(false);
 
+    // 이상하게 nexutil c1은 드라이버가 뻣음..
     QString cmd = QString("svc wifi disable; "
-                          "ifconfig %1 down; "
+                          "sleep 1.5; "
                           "ifconfig %1 up; "
-                          "nexutil -c1; "
                           "nexutil -d; "
                           "nexutil -k1; "
-                          "nexutil -g0x613 -i -v2").arg(dev);
+                          "nexutil -s0x613 -i -v2").arg(dev);
 
     qDebug() << "[EXEC] " << cmd;
     QProcess p;
@@ -113,6 +112,12 @@ void MainWindow::onStartButton()
     if(!out.isEmpty()) qDebug() << "[OUT]" << out;
     if(!err.isEmpty()) qDebug() << "[ERR]" << err;
 
+
+    // 채널 홉핑
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &MainWindow::nextChannel);
+    timer->start(500); // 0.5s
+
     runDaemon();
     isRunning = true;
 }
@@ -120,66 +125,94 @@ void MainWindow::onStartButton()
 void MainWindow::onStopButton()
 {
     if(!isRunning) return;
-    killDaemon();
+
+    if(timer != nullptr && timer->isActive())
+    {
+        timer->stop();
+        delete timer;
+        timer = nullptr;
+    }
+
+    if (daemonProcess != nullptr && daemonProcess->state() == QProcess::Running)
+    {
+        daemonProcess->terminate();
+        daemonProcess->waitForFinished(2000);
+    }
     // todo: interface down , up
     QString dev = ui->devIn->currentText();
-    QString cmd = QString("su -c 'nexutil -m0 && svc wifi enable && ifconfig %1 down && ifconfig %1 up'").arg(dev);
-    int res = std::system(cmd.toStdString().c_str());
-    if(res != 0)
+    QString cmd = QString(
+                          "nexutil -m0; "
+                          "svc wifi enable"
+                          ).arg(dev);
+
+    QProcess p;
+    p.start("su", QStringList() << "-c" << cmd);
+    p.waitForFinished(5000);
+
+    QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
+    if(!err.isEmpty())
     {
-        QMessageBox::warning(this, "ERROR", "WIFI 복구 실패");
+        qDebug() << "[CLEANUP ERROR]" << err;
     }
 
     isRunning = false;
     ui->devIn->setEnabled(true);
 
 }
+
 void MainWindow::onRender() {}
 
 void MainWindow::onDaemonOutput()
 {
     if(daemonProcess == nullptr) return;
 
-    QByteArray output = daemonProcess->readAllStandardOutput();
-    QList<QByteArray> lines = output.split('\n');
-    static QRegularExpression re("BSSID:\\s*([0-9a-fA-F:]+)\\s*PWR:\\s*(-?\\d+)\\s*CH:\\s*(\\d+)\\s*ESSID:\\s*(.*)");
+    daemonBuffer.append(daemonProcess->readAllStandardOutput());
+    const int packetSize = sizeof(ST_INFO);
+    int totalBytes = daemonBuffer.size();
+    int validBytes = (totalBytes/packetSize) * packetSize;
+    if(validBytes == 0) return;
 
-    for(const QByteArray& line : lines)
+    const char* ptr = daemonBuffer.constData();
+
+    for(int i=0; i<validBytes; i+=packetSize)
     {
-        QString strLine = QString::fromUtf8(line.trimmed());
-        if(strLine.isEmpty() || !strLine.contains("BSSID:")) continue;
+        ST_INFO info;
+        memcpy(&info, ptr+i, packetSize);
 
-        QRegularExpressionMatch match = re.match(strLine);
-        if(match.hasMatch())
+        QString bssid = QString::fromUtf8(info.bssid);
+        QString essid = QString::fromUtf8(info.essid);
+        QString pwr = QString::number(info.pwr);
+        QString ch = QString::number(info.ch);
+
+        if (bssid.isEmpty() || bssid == "00:00:00:00:00:00") continue;
+        if (displayItem.contains(bssid))
         {
-            QString bssid = match.captured(1);
-            QString pwr = match.captured(2);
-            QString ch = match.captured(3);
-            QString essid = match.captured(4);
-            if(displayItem.contains(bssid))
-            {
-                QListWidgetItem* item = displayItem[bssid];
-                display* row = qobject_cast<display*>(ui->listWidget->itemWidget(item));
-                if(row)
-                {
-                    row->updateInfo(pwr, ch);
-                }
-
+            QListWidgetItem* item = displayItem[bssid];
+            display* rowWidget = qobject_cast<display*>(ui->listWidget->itemWidget(item));
+            if (rowWidget) {
+                rowWidget->updateInfo(essid, pwr, ch);
             }
-            else
-            {
-                QListWidgetItem* item = new QListWidgetItem(ui->listWidget);
-                display* widget = new display(this);
-                widget->setInfo(bssid, pwr, ch, essid);
-                item->setSizeHint(widget->sizeHint());
-                ui->listWidget->addItem(item);
-                ui->listWidget->setItemWidget(item, widget);
-
-                displayItem.insert(bssid, item);
-            }
+            item->setData(Qt::UserRole, bssid);
+            item->setData(Qt::UserRole + 1, essid);
         }
+        else
+        {
+            QListWidgetItem* newItem = new QListWidgetItem(ui->listWidget);
+            display* newWidget = new display(this);
 
+            newWidget->setInfo(bssid, pwr, ch, essid);
+            newItem->setSizeHint(newWidget->sizeHint());
+
+            newItem->setData(Qt::UserRole, bssid);
+            newItem->setData(Qt::UserRole + 1, essid);
+
+            ui->listWidget->addItem(newItem);
+            ui->listWidget->setItemWidget(newItem, newWidget);
+
+            displayItem.insert(bssid, newItem);
+        }
     }
+    daemonBuffer.remove(0, validBytes);
 }
 
 void MainWindow::onDaemonError()
@@ -191,6 +224,108 @@ void MainWindow::onDaemonError()
     {
         qDebug() << "[DAEMON ERROR]" << error.trimmed();
     }
+}
+
+void MainWindow::nextChannel()
+{
+    int ch = hopSeq[hopIdx];
+    QString cmd = QString("nexutil -k%1").arg(ch);
+    QProcess::startDetached("su", QStringList() << "-c" << cmd);
+    hopIdx = (hopIdx+1) % hopSeq.size();
+    QString curCh = QString("%1").arg(ch, 2, 10, QChar('0'));
+    ui->currentCh->setText(QString("CH:%1").arg(curCh));
+}
+
+void MainWindow::showContents(const QPoint &pos)
+{
+    QListWidgetItem *item = ui->listWidget->itemAt(pos);
+    if(!item) return;
+
+    QString bssid = item->data(Qt::UserRole).toString();
+    QString essid = item->data(Qt::UserRole+1).toString();
+
+    QMenu menu(this);
+    menu.setStyleSheet(
+        "QMenu {"
+        "   background-color: white;"
+        "   border: 1px solid lightgray;"
+        "   min-width: 100px;" /* 메뉴 가로 넓이 */
+        "}"
+        "QMenu::item {"
+        "   padding: 15px 15px;"
+        "   font-size: 14pt;"
+        "   color: black;"
+        "}"
+        "QMenu::item:selected {"
+        "   background-color: #E0E0E0;"
+        "}"
+        );
+
+    // 복사 메뉴
+    QAction *copyBssidAct = menu.addAction("Copy BSSID");
+    QAction *copyEssidAct = menu.addAction("Copy ESSID");
+    // 공격 메뉴
+    QAction *deauthAct = menu.addAction("Deauth Attack");
+    QAction *stopAttackAct = menu.addAction("Stop Attack");
+
+    QAction *selectedAction = menu.exec(ui->listWidget->viewport()->mapToGlobal(pos));
+    QClipboard *clipboard = QApplication::clipboard();
+    if(selectedAction == copyBssidAct)
+    {
+        clipboard->setText(bssid);
+    }
+    else if(selectedAction == copyEssidAct)
+    {
+        clipboard->setText(essid);
+    }
+    else if(selectedAction == deauthAct) // Deauth attack
+    {
+        if(daemonProcess && daemonProcess->state() == QProcess::Running)
+        {
+            ST_IPC_CMD cmd;
+            memset(&cmd, 0, sizeof(ST_IPC_CMD));
+
+            cmd.action = 2;
+            strncpy(cmd.interface, devType.c_str(), 15);
+            cmd.target_ap = qstringToMac(bssid);
+            // 일단 브로드 캐스트로만
+            for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
+
+            daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+            QMessageBox::information(this, "DEAUTH ATTACK", "target: " + essid);
+        }
+    }
+    else if(selectedAction == stopAttackAct)
+    {
+        if(daemonProcess && daemonProcess->state() == QProcess::Running)
+        {
+            ST_IPC_CMD cmd;
+            memset(&cmd, 0, sizeof(ST_IPC_CMD));
+            cmd.action = 1;
+            daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+        }
+    }
+
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if(watched == ui->listWidget->viewport() && event->type() == QEvent::Gesture)
+    {
+        QGestureEvent *gestureEvent = static_cast<QGestureEvent*>(event);
+        if(QGesture *gesture = gestureEvent->gesture(Qt::TapAndHoldGesture))
+        {
+            QTapAndHoldGesture *tapAndHold = static_cast<QTapAndHoldGesture*>(gesture);
+            if(tapAndHold->state() == Qt::GestureFinished)
+            {
+                QPoint globalPos = tapAndHold->position().toPoint();
+                QPoint viewportPos = ui->listWidget->viewport()->mapFromGlobal(globalPos);
+                showContents(viewportPos);
+                return true;
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
 }
 
 static QString dropPcapDaemon()
@@ -227,4 +362,14 @@ static QString dropPcapDaemon()
     }
 
     return QString("");
+}
+
+static ST_MAC qstringToMac(const QString& macStr)
+{
+    ST_MAC mac;
+    uint32_t temp[6];
+    sscanf(macStr.toStdString().c_str(), "%x:%x:%x:%x:%x:%x",
+           &temp[0], &temp[1], &temp[2], &temp[3], &temp[4], &temp[5]);
+    for(int i=0; i<6; ++i) mac.mac[i] = (uint8_t)temp[i];
+    return mac;
 }

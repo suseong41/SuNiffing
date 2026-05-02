@@ -2,21 +2,22 @@
 #include <stdio.h>
 #include <string>
 #include <pcap/pcap.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <iostream>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <chrono>
+#include "ipc_proto.h"
 
 #pragma pack(push, 1)
 struct ST_INFO
 {
-    std::string BSSID;
-    std::string PWR;
-    std::string BEACONS;
-    std::string DATA;
-    //std::string s;
-    std::string CH;
-    //std::string MB;
-    std::string ENC;
-    //std::string CIPHER;
-    //std::string AUTH;
-    std::string ESSID;
+    char bssid[18]; // 00:00:00:00:00\0
+    char essid[33];
+    int16_t pwr;
+    int16_t ch;
 };
 #pragma pack(pop)
 
@@ -26,11 +27,17 @@ public:
     Runner();
     ~Runner();
 
-    void run(const std::string& dev);
+    void RXloop(const std::string& dev);
     void stop();
 private:
+    void TXloop();
+    std::thread TXthread;
+    std::mutex cmdMutex;
+    std::mutex outMutex;
+    ST_IPC_CMD currentCmd;
+
     std::string device;
-    bool isRunning;
+    std::atomic<bool> isRunning;
     pcap_t* pcap;
     char errbuf[PCAP_ERRBUF_SIZE];
 

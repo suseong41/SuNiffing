@@ -8,4 +8,4 @@ struct ST_MAC
     uint8_t mac[6];
 };
 
-std::string prtMac(ST_MAC mac);
+void prtMac(char* dest, uint64_t size, ST_MAC mac);
