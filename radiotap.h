@@ -28,3 +28,6 @@ struct ST_RDT_DATA
 ST_RDT capRdt(const u_char* packet);
 int presentCount(const u_char* packet);
 ST_RDT_DATA getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount);
+
+// CSA Attack
+bool hasFcs(const u_char* packet, ST_RDT *rdt, int presentCount);

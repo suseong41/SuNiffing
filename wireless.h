@@ -61,7 +61,8 @@ struct ST_ACK // 제어프레임
 
 struct ST_DEAUTH_PACKET
 {
-    uint8_t rdt_hdr[12] = {0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // dummy
+    //uint8_t rdt_hdr[12] = {0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // dummy
+    uint8_t rdt_hdr[12] = {0x00, 0x00, 0x0c, 0x00, 0x04, 0x80, 0x00, 0x00, 0x02, 0x00, 0x18, 0x00};
     ST_DEAUTH_WL wl;
 };
 
@@ -73,9 +74,14 @@ bool chkBeacon(ST_WL target);
 ST_BC_COMMON capBc(const u_char* packet);
 bool getEssid(char* dest, uint64_t destSize, const u_char* packet, const int beaconLen);
 
+int getCh(const u_char* beaconTagPacket, int tagTotalLen);
+
 // DEAUTH
 ST_DEAUTH_WL getApDeauth(ST_MAC ap_mac, ST_MAC st_mac);
 ST_DEAUTH_WL getStDeauth(ST_MAC ap_mac, ST_MAC st_mac);
 ST_AUTH_H getAuth_H(ST_MAC ap_mac, ST_MAC st_mac);
 ST_AUTH_B getAuth_B();
 ST_ACK getAck(ST_MAC ap_mac);
+
+// CSA Attack
+int getInsertTagLoc(const u_char *beaconTagPacket, int tagTotalLen, int insertTagId);

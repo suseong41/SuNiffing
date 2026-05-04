@@ -14,7 +14,7 @@ int main(int argc, char* argv[])
     std::string devName = argv[1];
 
     Runner runner;
-    runner.run(devName);
+    runner.RXloop(devName);
 
     return 0;
 }

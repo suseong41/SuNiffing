@@ -90,4 +90,21 @@ ST_RDT_DATA getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount)
     return data;
 }
 
+bool hasFcs(const u_char* packet, ST_RDT *rdt, int presentCount)
+{
+    uint32_t present = rdt->present;
+    int offset = 4 + 4*presentCount;
+    if((present & (1<<0)) != 0)
+    {
+        while((offset % 8) != 0) offset++;
+        offset += 8;
+    }
+    if((present & (1<<1)) != 0)
+    {
+        uint8_t flags = packet[offset];
+        if((flags & 0x10) != 0) return true;
+    }
+    return false;
+}
+
 

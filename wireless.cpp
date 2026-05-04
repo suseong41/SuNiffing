@@ -132,3 +132,50 @@ ST_ACK getAck(ST_MAC ap_mac)
     ack.da = ap_mac;
     return ack;
 }
+
+int getInsertTagLoc(const u_char *beaconTagPacket, int tagTotalLen, int insertTagId)
+{
+    const u_char* index = beaconTagPacket;
+    const u_char* end = index + tagTotalLen;
+    int prev = -1;
+    int currentLoc = 0;
+    int insertLoc = 0;
+    while (index+2 < end)
+    {
+        uint8_t tagId = index[0];
+        uint8_t tagLen = index[1];
+        int totalTagLen = (2+tagLen);
+        if (end < index+2+tagLen) break;
+        if (tagId < insertTagId && prev < tagId)
+        {
+            prev = tagId;
+            insertLoc = currentLoc + totalTagLen;
+        }
+        index += totalTagLen;
+        currentLoc += totalTagLen;
+    }
+    return insertLoc;
+}
+
+int getCh(const u_char* beaconTagPacket, int tagTotalLen)
+{
+    const u_char* index = beaconTagPacket;
+    const u_char* end = index + tagTotalLen;
+
+    while(index+2 <= end)
+    {
+        uint8_t tagId = index[0];
+        uint8_t tagLen = index[1];
+        int totalTagLen = 2 + tagLen;
+
+        if (index + totalTagLen > end) break;
+
+        if (tagId == 3 && tagLen == 1) {
+            return index[2];
+        }
+
+        index += totalTagLen;
+    }
+
+    return 0;
+}

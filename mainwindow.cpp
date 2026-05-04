@@ -63,7 +63,8 @@ void MainWindow::runDaemon()
     QString targetPath = dropPcapDaemon();
     if(targetPath != "")
     {
-        QString cmd = QString("%1 %2").arg(targetPath, QString::fromStdString(devType));
+        QString cmd = QString("LD_PRELOAD=/data/local/tmp/libnexmon.so %1 %2")
+        .arg(targetPath, QString::fromStdString(devType));
         args << "-c" << cmd;
         daemonProcess->start("su", args);
     }
@@ -167,7 +168,7 @@ void MainWindow::onDaemonOutput()
     if(daemonProcess == nullptr) return;
 
     daemonBuffer.append(daemonProcess->readAllStandardOutput());
-    const int packetSize = sizeof(ST_INFO);
+    const int packetSize = sizeof(ST_IPC_EVENT);
     int totalBytes = daemonBuffer.size();
     int validBytes = (totalBytes/packetSize) * packetSize;
     if(validBytes == 0) return;
@@ -176,13 +177,20 @@ void MainWindow::onDaemonOutput()
 
     for(int i=0; i<validBytes; i+=packetSize)
     {
-        ST_INFO info;
-        memcpy(&info, ptr+i, packetSize);
+        ST_IPC_EVENT event;
+        memcpy(&event, ptr+i, packetSize);
 
-        QString bssid = QString::fromUtf8(info.bssid);
-        QString essid = QString::fromUtf8(info.essid);
-        QString pwr = QString::number(info.pwr);
-        QString ch = QString::number(info.ch);
+        if(event.type == 1)
+        {
+            ui->statusbar->showMessage(QString::fromUtf8(event.message), 2000);
+            continue;
+        }
+        char bssidStr[18];
+        prtMac(bssidStr, sizeof(bssidStr), event.bssid);
+        QString bssid = QString::fromUtf8(bssidStr);
+        QString essid = QString::fromUtf8(event.essid);
+        QString pwr = QString::number(event.pwr);
+        QString ch = QString::number(event.ch);
 
         if (bssid.isEmpty() || bssid == "00:00:00:00:00:00") continue;
         if (displayItem.contains(bssid))
@@ -194,6 +202,7 @@ void MainWindow::onDaemonOutput()
             }
             item->setData(Qt::UserRole, bssid);
             item->setData(Qt::UserRole + 1, essid);
+            item->setData(Qt::UserRole + 2, ch);
         }
         else
         {
@@ -205,6 +214,7 @@ void MainWindow::onDaemonOutput()
 
             newItem->setData(Qt::UserRole, bssid);
             newItem->setData(Qt::UserRole + 1, essid);
+            newItem->setData(Qt::UserRole + 2, ch);
 
             ui->listWidget->addItem(newItem);
             ui->listWidget->setItemWidget(newItem, newWidget);
@@ -241,31 +251,20 @@ void MainWindow::showContents(const QPoint &pos)
     QListWidgetItem *item = ui->listWidget->itemAt(pos);
     if(!item) return;
 
+    int targetCh = item->data(Qt::UserRole + 2).toInt();
+
     QString bssid = item->data(Qt::UserRole).toString();
     QString essid = item->data(Qt::UserRole+1).toString();
 
     QMenu menu(this);
-    menu.setStyleSheet(
-        "QMenu {"
-        "   background-color: white;"
-        "   border: 1px solid lightgray;"
-        "   min-width: 100px;" /* 메뉴 가로 넓이 */
-        "}"
-        "QMenu::item {"
-        "   padding: 15px 15px;"
-        "   font-size: 14pt;"
-        "   color: black;"
-        "}"
-        "QMenu::item:selected {"
-        "   background-color: #E0E0E0;"
-        "}"
-        );
 
     // 복사 메뉴
     QAction *copyBssidAct = menu.addAction("Copy BSSID");
     QAction *copyEssidAct = menu.addAction("Copy ESSID");
+    menu.addSeparator();
     // 공격 메뉴
     QAction *deauthAct = menu.addAction("Deauth Attack");
+    QAction *csaAct = menu.addAction("CSA Attack");
     QAction *stopAttackAct = menu.addAction("Stop Attack");
 
     QAction *selectedAction = menu.exec(ui->listWidget->viewport()->mapToGlobal(pos));
@@ -282,6 +281,11 @@ void MainWindow::showContents(const QPoint &pos)
     {
         if(daemonProcess && daemonProcess->state() == QProcess::Running)
         {
+            if(timer && timer->isActive()) timer->stop();
+            QString chCmd = QString("nexutil -k%1").arg(targetCh);
+            QProcess::startDetached("su", QStringList() << "-c" << chCmd);
+            ui->currentCh->setText(QString("CH: %1 [is attacking]").arg(targetCh));
+
             ST_IPC_CMD cmd;
             memset(&cmd, 0, sizeof(ST_IPC_CMD));
 
@@ -292,7 +296,28 @@ void MainWindow::showContents(const QPoint &pos)
             for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
 
             daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
-            QMessageBox::information(this, "DEAUTH ATTACK", "target: " + essid);
+            ui->statusbar->showMessage("Deauth Attack " + essid, 3000);
+        }
+    }
+    else if(selectedAction == csaAct)
+    {
+        if(daemonProcess && daemonProcess->state() == QProcess::Running)
+        {
+            bool ok;
+            int targetCh = QInputDialog::getInt(this, "CSA Attack", "goto ch.", 11, 1, 14, 1, &ok);
+            if(ok)
+            {
+                ST_IPC_CMD cmd;
+                memset(&cmd, 0, sizeof(ST_IPC_CMD));
+                cmd.action = 3;
+                strncpy(cmd.interface, devType.c_str(), 15);
+                cmd.target_ap = qstringToMac(bssid);
+                for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
+                cmd.channel = targetCh;
+
+                daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+                ui->statusbar->showMessage("CSA Attack: " + essid, 3000);
+            }
         }
     }
     else if(selectedAction == stopAttackAct)
@@ -303,6 +328,9 @@ void MainWindow::showContents(const QPoint &pos)
             memset(&cmd, 0, sizeof(ST_IPC_CMD));
             cmd.action = 1;
             daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+
+            if(timer && !timer->isActive()) timer->start(500);
+            ui->statusbar->showMessage("Attack Stopped", 3000);
         }
     }
 

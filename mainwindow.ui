@@ -63,9 +63,9 @@
    <widget class="QLabel" name="currentCh">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>10</x>
       <y>590</y>
-      <width>41</width>
+      <width>351</width>
       <height>21</height>
      </rect>
     </property>

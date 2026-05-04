@@ -19,6 +19,7 @@
 #include <QGestureEvent>
 #include <QTapAndHoldGesture>
 #include <QTimer>
+#include <QInputDialog>
 #include "mac.h"
 
 QT_BEGIN_NAMESPACE
