@@ -4,9 +4,19 @@
 
 #pragma pack(push, 1)
 
+enum class Act : uint8_t
+{
+    IDLE = 0,
+    SNIFFING = 1,
+    DEAUTH = 2,
+    CSA = 3,
+    STOP = 4,
+    DUMMY = 5
+};
+
 struct ST_IPC_CMD
 {
-    uint8_t action;         // 1. Sniffing  |  2. Deauth  |  3. CSA  |  4. STOP  | 5. dummy
+    Act action;         // 1. Sniffing  |  2. Deauth  |  3. CSA  |  4. STOP  | 5. dummy
     char interface[16];     // wlan0
     ST_MAC target_ap;
     ST_MAC target_st;

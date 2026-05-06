@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <poll.h>
 #include <chrono>
 #include "ipc_proto.h"
 
@@ -31,8 +32,4 @@ private:
     std::mutex cmdMutex;
     std::mutex outMutex;
     ST_IPC_CMD currentCmd;
-
-    std::mutex csaMutex;
-    uint8_t csaPacketBuf[4096];
-    uint32_t csaPacketLen = 0;
 };

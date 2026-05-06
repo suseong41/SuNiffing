@@ -289,7 +289,7 @@ void MainWindow::showContents(const QPoint &pos)
             ST_IPC_CMD cmd;
             memset(&cmd, 0, sizeof(ST_IPC_CMD));
 
-            cmd.action = 2;
+            cmd.action = Act::DEAUTH;
             strncpy(cmd.interface, devType.c_str(), 15);
             cmd.target_ap = qstringToMac(bssid);
             // 일단 브로드 캐스트로만
@@ -309,7 +309,7 @@ void MainWindow::showContents(const QPoint &pos)
             {
                 ST_IPC_CMD cmd;
                 memset(&cmd, 0, sizeof(ST_IPC_CMD));
-                cmd.action = 3;
+                cmd.action = Act::CSA;
                 strncpy(cmd.interface, devType.c_str(), 15);
                 cmd.target_ap = qstringToMac(bssid);
                 for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
@@ -326,7 +326,7 @@ void MainWindow::showContents(const QPoint &pos)
         {
             ST_IPC_CMD cmd;
             memset(&cmd, 0, sizeof(ST_IPC_CMD));
-            cmd.action = 1;
+            cmd.action = Act::SNIFFING;
             daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
 
             if(timer && !timer->isActive()) timer->start(500);

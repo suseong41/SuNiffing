@@ -51,7 +51,7 @@ int presentCount(const u_char* packet)
 }
 
 // PWR은 present에서 5| Antena Signal 부분.
-ST_RDT_DATA getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount)
+ST_RDT_DATA getRdtInfo(const u_char* packet, const ST_RDT *rdt, int presentCount)
 {
     ST_RDT_DATA data;
     uint32_t present = rdt->present;
@@ -90,7 +90,7 @@ ST_RDT_DATA getRdtInfo(const u_char* packet, ST_RDT *rdt, int presentCount)
     return data;
 }
 
-bool hasFcs(const u_char* packet, ST_RDT *rdt, int presentCount)
+bool hasFcs(const u_char* packet, const ST_RDT *rdt, int presentCount)
 {
     uint32_t present = rdt->present;
     int offset = 4 + 4*presentCount;
