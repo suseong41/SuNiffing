@@ -73,6 +73,67 @@
      <string>CH: 0</string>
     </property>
    </widget>
+   <widget class="QSlider" name="viewToggle">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>-10</y>
+      <width>61</width>
+      <height>25</height>
+     </rect>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">QSlider::groove:horizontal {
+    border-radius: 12px;
+    height: 24px;
+    background: #e0e0e0;
+}
+
+QSlider::handle:horizontal {
+    background: #ffffff;
+    border: 1px solid #999999;
+    width: 22px;
+    height: 22px;
+    margin: 1px; /* 손잡이가 배경 선 밖으로 나가지 않게 잡아줌 */
+    border-radius: 11px;
+}</string>
+    </property>
+    <property name="maximum">
+     <number>1</number>
+    </property>
+    <property name="pageStep">
+     <number>1</number>
+    </property>
+    <property name="orientation">
+     <enum>Qt::Orientation::Horizontal</enum>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>190</x>
+      <y>0</y>
+      <width>21</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>AP</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_2">
+    <property name="geometry">
+     <rect>
+      <x>290</x>
+      <y>0</y>
+      <width>58</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>STATION</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

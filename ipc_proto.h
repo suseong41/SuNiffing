@@ -11,7 +11,8 @@ enum class Act : uint8_t
     DEAUTH = 2,
     CSA = 3,
     STOP = 4,
-    DUMMY = 5
+    AUTH = 5,
+    DUMMY = 6
 };
 
 struct ST_IPC_CMD
@@ -27,6 +28,7 @@ struct ST_IPC_EVENT
 {
     uint8_t type;
     ST_MAC bssid;
+    ST_MAC st_mac;
     char essid[33];
     int16_t pwr;
     int16_t ch;

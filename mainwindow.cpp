@@ -5,8 +5,6 @@
 #include "./display.h"
 #include "./ipc_proto.h"
 
-// TODO: 라디오탭 CH가 아니라, tag 3에서 파싱해오자
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -42,6 +40,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     // 홉핑 채널
     ui->currentCh->setStyleSheet("color: #87CEFA; font-weight: bold;");
+
+    // AP | STATION 전환 토글
+    connect(ui->viewToggle, &QSlider::valueChanged, this, &MainWindow::onViewToggleChange);
+    onViewToggleChange(0);
 }
 
 MainWindow::~MainWindow()
@@ -180,46 +182,85 @@ void MainWindow::onDaemonOutput()
         ST_IPC_EVENT event;
         memcpy(&event, ptr+i, packetSize);
 
-        if(event.type == 1)
+        if(event.type == 99)
         {
             ui->statusbar->showMessage(QString::fromUtf8(event.message), 2000);
-            continue;
         }
-        char bssidStr[18];
-        prtMac(bssidStr, sizeof(bssidStr), event.bssid);
-        QString bssid = QString::fromUtf8(bssidStr);
-        QString essid = QString::fromUtf8(event.essid);
+
+        uint8_t type = event.type;
+        QString displayMac;
+        QString displayEssid;
         QString pwr = QString::number(event.pwr);
         QString ch = QString::number(event.ch);
 
-        if (bssid.isEmpty() || bssid == "00:00:00:00:00:00") continue;
-        if (displayItem.contains(bssid))
+        if(type == 0)
         {
-            QListWidgetItem* item = displayItem[bssid];
+            char bssidStr[18];
+            prtMac(bssidStr, sizeof(bssidStr), event.bssid);
+            displayMac = QString::fromUtf8(bssidStr);
+            displayEssid = QString::fromUtf8(event.essid);
+        }
+        else if(type == 1)
+        {
+            char stMacStr[18];
+            prtMac(stMacStr, sizeof(stMacStr), event.st_mac);
+            displayMac = QString::fromUtf8(stMacStr);
+
+            char linkedBssidStr[18];
+            prtMac(linkedBssidStr, sizeof(linkedBssidStr), event.bssid);
+            QString linked = QString::fromUtf8(linkedBssidStr);
+
+            if(linked == "FF:FF:FF:FF:FF:FF" || linked == "00:00:00:00:00:00")
+            {
+                displayEssid = "(Not Associated)";
+            }
+            else
+            {
+                displayEssid = "To: " + linked;
+            }
+            ch = "-";
+        }
+        else continue;
+
+        if(displayMac.isEmpty() || displayMac == "00:00:00:00:00:00" || displayMac == "FF:FF:FF:FF:FF:FF") continue;
+        QString mapKey = QString::number(type) + "_" + displayMac;
+        QString uiMacText = displayMac;
+        if (type == 1)
+        {
+            uiMacText = "FROM: " + displayMac;
+        }
+        if (displayItem.contains(mapKey))
+        {
+            QListWidgetItem* item = displayItem[mapKey];
             display* rowWidget = qobject_cast<display*>(ui->listWidget->itemWidget(item));
             if (rowWidget) {
-                rowWidget->updateInfo(essid, pwr, ch);
+                rowWidget->updateInfo(displayEssid, pwr, ch);
             }
-            item->setData(Qt::UserRole, bssid);
-            item->setData(Qt::UserRole + 1, essid);
-            item->setData(Qt::UserRole + 2, ch);
+            item->setData(Qt::UserRole + itemRole::MacAddress, displayMac);
+            item->setData(Qt::UserRole + itemRole::Essid, displayEssid);
+            item->setData(Qt::UserRole + itemRole::Channel, ch);
+            item->setData(Qt::UserRole + itemRole::LinkedBssid, QString::fromUtf8((char*)event.bssid.mac));
         }
         else
         {
             QListWidgetItem* newItem = new QListWidgetItem(ui->listWidget);
             display* newWidget = new display(this);
 
-            newWidget->setInfo(bssid, pwr, ch, essid);
+            newWidget->setInfo(displayMac, pwr, ch, displayEssid);
             newItem->setSizeHint(newWidget->sizeHint());
 
-            newItem->setData(Qt::UserRole, bssid);
-            newItem->setData(Qt::UserRole + 1, essid);
-            newItem->setData(Qt::UserRole + 2, ch);
+            newItem->setData(Qt::UserRole + itemRole::MacAddress, displayMac);
+            newItem->setData(Qt::UserRole + itemRole::Essid, displayEssid);
+            newItem->setData(Qt::UserRole + itemRole::Channel, ch);
+            newItem->setData(Qt::UserRole + itemRole::Type, type);
+            newItem->setData(Qt::UserRole + itemRole::LinkedBssid, QString::fromUtf8((char*)event.bssid.mac));
+
+            newItem->setHidden(type != currentViewMode);
 
             ui->listWidget->addItem(newItem);
             ui->listWidget->setItemWidget(newItem, newWidget);
 
-            displayItem.insert(bssid, newItem);
+            displayItem.insert(mapKey, newItem);
         }
     }
     daemonBuffer.remove(0, validBytes);
@@ -251,10 +292,11 @@ void MainWindow::showContents(const QPoint &pos)
     QListWidgetItem *item = ui->listWidget->itemAt(pos);
     if(!item) return;
 
-    int targetCh = item->data(Qt::UserRole + 2).toInt();
+    int targetCh = item->data(Qt::UserRole + itemRole::Channel).toInt();
 
-    QString bssid = item->data(Qt::UserRole).toString();
-    QString essid = item->data(Qt::UserRole+1).toString();
+    QString bssid = item->data(Qt::UserRole + itemRole::MacAddress).toString();
+    QString essid = item->data(Qt::UserRole + itemRole::Essid).toString();
+    uint8_t itemType = item->data(Qt::UserRole + itemRole::Type).toInt();
 
     QMenu menu(this);
 
@@ -262,9 +304,17 @@ void MainWindow::showContents(const QPoint &pos)
     QAction *copyBssidAct = menu.addAction("Copy BSSID");
     QAction *copyEssidAct = menu.addAction("Copy ESSID");
     menu.addSeparator();
+
     // 공격 메뉴
-    QAction *deauthAct = menu.addAction("Deauth Attack");
-    QAction *csaAct = menu.addAction("CSA Attack");
+    QAction *deauthAct = nullptr;
+    QAction *authAct = nullptr;
+    QAction *csaAct = nullptr;
+    if(itemType == 0)
+    {
+        deauthAct = menu.addAction("Deauth Attack");
+        authAct = menu.addAction("Auth Attack");
+        csaAct = menu.addAction("CSA Attack");
+    }
     QAction *stopAttackAct = menu.addAction("Stop Attack");
 
     QAction *selectedAction = menu.exec(ui->listWidget->viewport()->mapToGlobal(pos));
@@ -277,47 +327,60 @@ void MainWindow::showContents(const QPoint &pos)
     {
         clipboard->setText(essid);
     }
-    else if(selectedAction == deauthAct) // Deauth attack
+    else if(itemType == 0 && (selectedAction == deauthAct || selectedAction == authAct || selectedAction == csaAct)) // Deauth attack
     {
         if(daemonProcess && daemonProcess->state() == QProcess::Running)
         {
-            if(timer && timer->isActive()) timer->stop();
-            QString chCmd = QString("nexutil -k%1").arg(targetCh);
-            QProcess::startDetached("su", QStringList() << "-c" << chCmd);
-            ui->currentCh->setText(QString("CH: %1 [is attacking]").arg(targetCh));
+            QStringList stationList;
+            stationList << "Broadcast (FF:FF:FF:FF:FF:FF)";
 
-            ST_IPC_CMD cmd;
-            memset(&cmd, 0, sizeof(ST_IPC_CMD));
-
-            cmd.action = Act::DEAUTH;
-            strncpy(cmd.interface, devType.c_str(), 15);
-            cmd.target_ap = qstringToMac(bssid);
-            // 일단 브로드 캐스트로만
-            for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
-
-            daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
-            ui->statusbar->showMessage("Deauth Attack " + essid, 3000);
-        }
-    }
-    else if(selectedAction == csaAct)
-    {
-        if(daemonProcess && daemonProcess->state() == QProcess::Running)
-        {
-            bool ok;
-            int targetCh = QInputDialog::getInt(this, "CSA Attack", "goto ch.", 11, 1, 14, 1, &ok);
-            if(ok)
+            for(int i=0; i<ui->listWidget->count(); i++)
             {
-                ST_IPC_CMD cmd;
-                memset(&cmd, 0, sizeof(ST_IPC_CMD));
-                cmd.action = Act::CSA;
-                strncpy(cmd.interface, devType.c_str(), 15);
-                cmd.target_ap = qstringToMac(bssid);
-                for(int i=0; i<6; i++) cmd.target_st.mac[i] = 0xFF;
-                cmd.channel = targetCh;
-
-                daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
-                ui->statusbar->showMessage("CSA Attack: " + essid, 3000);
+                QListWidgetItem* stItem = ui->listWidget->item(i);
+                if(stItem->data(Qt::UserRole+itemRole::Type).toInt() == 1)
+                {
+                    stationList << stItem->data(Qt::UserRole + itemRole::MacAddress).toString();
+                }
             }
+
+            attackDialog = new QDialog(this);
+            attackDialog->setAttribute(Qt::WA_DeleteOnClose);
+
+            if (selectedAction == deauthAct) { attackDialog->setWindowTitle("Deauth Attack"); attackType = 1; }
+            else if (selectedAction == authAct) { attackDialog->setWindowTitle("Auth Attack"); attackType = 2; }
+            else { attackDialog->setWindowTitle("CSA Attack"); attackType = 3; }
+
+            attackTargetBssid = bssid;
+            attackTargetCh = targetCh;
+
+            QVBoxLayout *layout = new QVBoxLayout(attackDialog);
+
+            QLabel *chLabel = new QLabel("Target Channel (goto):", attackDialog);
+            attackChSpin = new QSpinBox(attackDialog);
+            attackChSpin->setRange(1, 14);
+            attackChSpin->setValue(11);
+            layout->addWidget(chLabel);
+            layout->addWidget(attackChSpin);
+
+            if (attackType != 3)
+            {
+                chLabel->hide();
+                attackChSpin->hide();
+            }
+
+            layout->addWidget(new QLabel("Select Target Station:", attackDialog));
+            attackStCombo = new QComboBox(attackDialog);
+            attackStCombo->addItems(stationList);
+            layout->addWidget(attackStCombo);
+
+            QPushButton *okBtn = new QPushButton("Attack Start", attackDialog);
+            layout->addWidget(okBtn);
+
+            connect(okBtn, &QPushButton::clicked, attackDialog, &QDialog::accept);
+
+            connect(attackDialog, &QDialog::accepted, this, &MainWindow::onAttackDialogAccepted);
+
+            attackDialog->open();
         }
     }
     else if(selectedAction == stopAttackAct)
@@ -327,6 +390,7 @@ void MainWindow::showContents(const QPoint &pos)
             ST_IPC_CMD cmd;
             memset(&cmd, 0, sizeof(ST_IPC_CMD));
             cmd.action = Act::SNIFFING;
+            strncpy(cmd.interface, devType.c_str(), 15);
             daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
 
             if(timer && !timer->isActive()) timer->start(500);
@@ -354,6 +418,68 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::onViewToggleChange(int index)
+{
+    currentViewMode = index;
+    if(index == 0)
+    {
+        ui->viewToggle->setStyleSheet(
+            "QSlider::groove:horizontal { border-radius: 12px; height: 24px; background: #e0e0e0; }"
+            "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #999999; width: 22px; height: 22px; margin: 1px; border-radius: 11px; }"
+            );
+    }
+    else
+    {
+        ui->viewToggle->setStyleSheet(
+            "QSlider::groove:horizontal { border-radius: 12px; height: 24px; background: #87CEFA; }"
+            "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #999999; width: 22px; height: 22px; margin: 1px; border-radius: 11px; }"
+            );
+    }
+
+    for(int i=0; i<ui->listWidget->count(); i++)
+    {
+        QListWidgetItem *item = ui->listWidget->item(i);
+        if(item)
+        {
+            int itemType = item->data(Qt::UserRole + itemRole::Type).toInt();
+            item->setHidden(itemType != currentViewMode);
+        }
+    }
+}
+
+void MainWindow::onAttackDialogAccepted()
+{
+    if (!attackStCombo || !attackChSpin) return;
+    QString targetStStr = attackStCombo->currentText();
+    int chToMove = attackChSpin->value();
+
+    if(timer && timer->isActive()) timer->stop();
+    QString chCmd = QString("nexutil -k%1").arg(attackTargetCh);
+    QProcess::startDetached("su", QStringList() << "-c" << chCmd);
+    ui->currentCh->setText(QString("CH: %1 [is attacking]").arg(attackTargetCh));
+
+    QString pureMac = targetStStr;
+    if(targetStStr.startsWith("Broadcast")) pureMac = "FF:FF:FF:FF:FF:FF";
+
+    ST_IPC_CMD cmd;
+    memset(&cmd, 0, sizeof(ST_IPC_CMD));
+
+    if (attackType == 1) cmd.action = Act::DEAUTH;
+    else if (attackType == 2) cmd.action = Act::AUTH;
+    else cmd.action = Act::CSA;
+
+    strncpy(cmd.interface, devType.c_str(), 15);
+    cmd.target_ap = qstringToMac(attackTargetBssid);
+    cmd.target_st = qstringToMac(pureMac);
+    cmd.channel = (attackType == 3) ? chToMove : attackTargetCh;
+
+    if (daemonProcess && daemonProcess->state() == QProcess::Running)
+    {
+        daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+    }
+    ui->statusbar->showMessage("Attack started to " + pureMac, 3000);
 }
 
 static QString dropPcapDaemon()

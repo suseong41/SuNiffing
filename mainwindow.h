@@ -20,11 +20,23 @@
 #include <QTapAndHoldGesture>
 #include <QTimer>
 #include <QInputDialog>
+#include <QVBoxLayout>
+#include <QSpinBox>
+#include <QComboBox>
 #include "mac.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+enum itemRole
+{
+    MacAddress = Qt::UserRole,
+    Essid,
+    Channel,
+    Type,
+    LinkedBssid
+};
 
 class MainWindow : public QMainWindow
 {
@@ -59,6 +71,17 @@ private:
     void nextChannel();
 
     QMap<QString, QListWidgetItem*> displayItem;
+
+    void onViewToggleChange(int index);
+    int currentViewMode = 0;
+
+    void onAttackDialogAccepted();
+    QDialog *attackDialog = nullptr;
+    QComboBox *attackStCombo = nullptr;
+    QSpinBox *attackChSpin = nullptr;
+    int attackType = 0;
+    QString attackTargetBssid;
+    int attackTargetCh = 0;
 };
 
 static QString dropPcapDaemon();

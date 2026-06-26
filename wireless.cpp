@@ -15,8 +15,61 @@ ST_BC_COMMON capBc(const u_char* packet)
 bool chkBeacon(ST_WL target)
 {
     if((target.frameControl & 0x00FF) == 0x80) return true;
-
     return false;
+}
+
+bool chkProbeReq(ST_WL target)
+{
+    if((target.frameControl & 0x00FF) == 0x40) return true;
+    return false;
+}
+
+// AP | STATION 구별 함수
+WLTYPE chkWlType(const ST_WL* wl)
+{
+    uint16_t fc = wl->frameControl & 0x00FF;
+
+    if(fc == 0x80 || fc == 0x50)
+    {
+        return WLTYPE::AP;
+    }
+
+    if(fc == 0x40 || fc == 0x08)
+    {
+        return WLTYPE::STATION;
+    }
+
+    return WLTYPE::UNKNOWN;
+}
+
+bool getStationInfo(const ST_RDT* rdt, const ST_WL* wl, ST_STATION_INFO& info)
+{
+    memset(&info, 0, sizeof(ST_STATION_INFO));
+    uint16_t fc = wl->frameControl & 0x00FF;
+
+    if(fc == 0x40) // Probe Request
+    {
+        memset(&info.bssid, 0xFF, 6);
+        info.st_mac = wl->sa;
+    }
+    else if(fc == 0x08) // Data Frame
+    {
+        uint16_t flags = wl->frameControl & 0x0300; // 0000 0011 0000 0000
+        if(flags == 0x0100) // TO DS
+        {
+            info.bssid = wl->da;
+            info.st_mac = wl->sa;
+        }
+        else if(flags == 0x0200)
+        {
+            info.bssid = wl->sa;
+            info.st_mac = wl->da;
+        }
+        else return false;
+    }
+    else return false;
+
+    return true;
 }
 
 // TAG 0이 없으면, 깨진 비콘 프레임이라 봄.
