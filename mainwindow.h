@@ -23,20 +23,23 @@
 #include <QVBoxLayout>
 #include <QSpinBox>
 #include <QComboBox>
+#include <QButtonGroup>
+#include <QStandardItemModel>
+#include <QHash>
+#include <QListView>
+#include <QLineEdit>
+#include <QDateTime>
+#include <QAbstractItemView>
 #include "mac.h"
+#include "devicelist.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
-enum itemRole
-{
-    MacAddress = Qt::UserRole,
-    Essid,
-    Channel,
-    Type,
-    LinkedBssid
-};
+#ifdef Q_OS_MAC
+class MacDebug;
+#endif
 
 class MainWindow : public QMainWindow
 {
@@ -64,13 +67,24 @@ private:
     bool isRunning;
     QProcess *daemonProcess;
     QByteArray daemonBuffer;
+    void processDaemonBuffer();
+    void injectDebugEvents(const QByteArray& bytes);
+#ifdef Q_OS_MAC
+    MacDebug* macDebug = nullptr;
+#endif
 
-    QTimer* timer;
+    QTimer* timer = nullptr;
     const QList<int> hopSeq = {1, 6, 11, 2, 7, 12, 3, 8, 13, 4, 9, 5, 10}; // 미국 ~11, 일본 ~14 어댑터 찾기 iw_list
     int hopIdx = 0;
     void nextChannel();
 
-    QMap<QString, QListWidgetItem*> displayItem;
+    // 장치 리스트 (model/view)
+    QStandardItemModel* devModel = nullptr;
+    DeviceProxy* devProxy = nullptr;
+    QHash<QString, QStandardItem*> itemByKey;
+    QTimer* ageTimer = nullptr;
+    void ageDevices();
+    void updateEmptyState();
 
     void onViewToggleChange(int index);
     int currentViewMode = 0;
@@ -82,6 +96,16 @@ private:
     int attackType = 0;
     QString attackTargetBssid;
     int attackTargetCh = 0;
+
+    // 공격 상태 표시 (B-5)
+    bool attacking = false;
+    qint64 attackStartMs = 0;
+    QString attackTypeName;
+    QString attackTargetMac;
+    QTimer* attackTimer = nullptr;
+    void stopAttack();
+    void updateAttackBanner();
+    void markAttackTarget(const QString& key);
 };
 
 static QString dropPcapDaemon();

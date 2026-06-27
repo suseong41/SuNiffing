@@ -33,7 +33,9 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         wireless.h wireless.cpp
         mac.h
         mac.cpp
-        display.h display.cpp display.ui
+        devicelist.h devicelist.cpp
+        theme.h
+        macdebug.h macdebug.cpp
         ipc_proto.h
     )
 
