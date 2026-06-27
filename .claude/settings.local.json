@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(g++ -std=c++20 -Wall -O0 verify.cpp -o verify)",
+      "Bash(./verify)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}

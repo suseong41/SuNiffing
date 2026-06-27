@@ -179,7 +179,7 @@ void Runner::RXloop(const std::string& dev)
             if(type == WLTYPE::AP)
             {
                 uint64_t wirelessLen = sizeof(ST_WL);
-                int16_t tagLen = 0;
+                uint16_t tagLen = 0;
 
                 if (!chkBeacon(*wl)) continue;
                 if (currentCmd.action == Act::CSA && memcmp(wl->bssid.mac, currentCmd.target_ap.mac, 6) == 0)
