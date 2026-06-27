@@ -10,6 +10,7 @@
 #include <atomic>
 #include <poll.h>
 #include <chrono>
+#include <regex>
 #include "ipc_proto.h"
 
 class Runner

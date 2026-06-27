@@ -32,7 +32,7 @@ void display::setInfo(const QString& bssid, const QString& pwr, const QString& c
 }
 void display::updateInfo(const QString& essid, const QString& pwr, const QString& ch)
 {
-    if(!essid.isEmpty() || essid != ui->lEssid->text())
+    if(!essid.isEmpty() && essid != ui->lEssid->text())
     {
         ui->lEssid->setText(essid);
         if(essid.startsWith("<length:"))

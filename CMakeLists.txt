@@ -74,8 +74,8 @@ target_include_directories(SuNiffing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../lib
 
 # llvm-strip
 if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
-    add_custom_command(TARGET ssdaemon POST_BUILD
-        COMMAND llvm-strip --strip-all $<TARGET_FILE:ssdaemon>
+    add_custom_command(TARGET suseong POST_BUILD
+        COMMAND llvm-strip --strip-all $<TARGET_FILE:suseong>
     )
 endif()
 
@@ -85,7 +85,7 @@ endif()
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
 if(${QT_VERSION} VERSION_LESS 6.1.0)
-  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.SuNiffing)
+    set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.SuNiffing)
 endif()
 set_target_properties(SuNiffing PROPERTIES
     ${BUNDLE_ID_OPTION}

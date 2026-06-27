@@ -71,7 +71,7 @@ void MainWindow::runDaemon()
         daemonProcess->start("su", args);
     }
 #elif defined(Q_OS_MAC)
-    QString targetPath = QCoreApplictation::applicationDirPath() + "/suseongdaemon";
+    QString targetPath = QCoreApplication::applicationDirPath() + "/suseong";
     args << QString::fromStdString(devType);
     daemonProcess->start(targetPath,args);
 #endif
@@ -98,11 +98,11 @@ void MainWindow::onStartButton()
 
     // 이상하게 nexutil c1은 드라이버가 뻣음..
     QString cmd = QString("svc wifi disable; "
-                          "sleep 1.5; "
-                          "ifconfig %1 up; "
-                          "nexutil -d; "
-                          "nexutil -k1; "
-                          "nexutil -s0x613 -i -v2").arg(dev);
+                        "sleep 1.5; "
+                        "ifconfig %1 up; "
+                        "nexutil -d; "
+                        "nexutil -k1; "
+                        "nexutil -s0x613 -i -v2").arg(dev);
 
     qDebug() << "[EXEC] " << cmd;
     QProcess p;
@@ -143,10 +143,7 @@ void MainWindow::onStopButton()
     }
     // todo: interface down , up
     QString dev = ui->devIn->currentText();
-    QString cmd = QString(
-                          "nexutil -m0; "
-                          "svc wifi enable"
-                          ).arg(dev);
+    QString cmd = QString("nexutil -m0; svc wifi enable").arg(dev);
 
     QProcess p;
     p.start("su", QStringList() << "-c" << cmd);
@@ -181,11 +178,6 @@ void MainWindow::onDaemonOutput()
     {
         ST_IPC_EVENT event;
         memcpy(&event, ptr+i, packetSize);
-
-        if(event.type == 99)
-        {
-            ui->statusbar->showMessage(QString::fromUtf8(event.message), 2000);
-        }
 
         uint8_t type = event.type;
         QString displayMac;
@@ -239,11 +231,10 @@ void MainWindow::onDaemonOutput()
             item->setData(Qt::UserRole + itemRole::MacAddress, displayMac);
             item->setData(Qt::UserRole + itemRole::Essid, displayEssid);
             item->setData(Qt::UserRole + itemRole::Channel, ch);
-            item->setData(Qt::UserRole + itemRole::LinkedBssid, QString::fromUtf8((char*)event.bssid.mac));
         }
         else
         {
-            QListWidgetItem* newItem = new QListWidgetItem(ui->listWidget);
+            QListWidgetItem* newItem = new QListWidgetItem();
             display* newWidget = new display(this);
 
             newWidget->setInfo(displayMac, pwr, ch, displayEssid);
@@ -253,7 +244,6 @@ void MainWindow::onDaemonOutput()
             newItem->setData(Qt::UserRole + itemRole::Essid, displayEssid);
             newItem->setData(Qt::UserRole + itemRole::Channel, ch);
             newItem->setData(Qt::UserRole + itemRole::Type, type);
-            newItem->setData(Qt::UserRole + itemRole::LinkedBssid, QString::fromUtf8((char*)event.bssid.mac));
 
             newItem->setHidden(type != currentViewMode);
 
@@ -510,8 +500,8 @@ static QString dropPcapDaemon()
     if(assetFile.copy(targetPath))
     {
         QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
-                                              QFileDevice::ReadGroup | QFileDevice::ExeGroup |
-                                              QFileDevice::ReadOther | QFileDevice::ExeOther);
+                                        QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                                        QFileDevice::ReadOther | QFileDevice::ExeOther);
         return targetPath;
     }
 
@@ -521,9 +511,13 @@ static QString dropPcapDaemon()
 static ST_MAC qstringToMac(const QString& macStr)
 {
     ST_MAC mac;
-    uint32_t temp[6];
-    sscanf(macStr.toStdString().c_str(), "%x:%x:%x:%x:%x:%x",
-           &temp[0], &temp[1], &temp[2], &temp[3], &temp[4], &temp[5]);
+    uint32_t temp[6] = {0};
+    if(sscanf(macStr.toStdString().c_str(), "%x:%x:%x:%x:%x:%x",
+            &temp[0], &temp[1], &temp[2], &temp[3], &temp[4], &temp[5]) != 6)
+    {
+        memset(&mac, 0, sizeof(mac));
+        return mac;
+    }
     for(int i=0; i<6; ++i) mac.mac[i] = (uint8_t)temp[i];
     return mac;
 }
