@@ -163,25 +163,18 @@
  Lv3(런타임) 미실시.
 
 --------------------------------------------------------------------------------
- [TEST] macOS 더미 데이터 주입기                         [Lv2 전체빌드 검증]
+ [TEST] macOS 더미 데이터 주입기 — 제거됨
 --------------------------------------------------------------------------------
- 목적 : macOS 에선 모니터모드/su/nexutil/데몬이 동작 안 함 -> UI 만 더미로 검증
- 신규 파일 : macdebug.h / macdebug.cpp (MacDebug : QObject)
-   - 1.5s 타이머로 더미 ST_IPC_EVENT 묶음 생성 -> eventsReady 시그널
-   - AP 4~5개(숨김SSID 1, 전이AP 1=에이징 데모), STA 3개(연결/미연결), PWR 지터
- mainwindow :
-   - onDaemonOutput 파싱부를 processDaemonBuffer() 로 분리
-   - injectDebugEvents(QByteArray) 추가 (더미/실데이터 공용 경로)
-   - #ifdef Q_OS_MAC: 생성자에서 MacDebug 연결,
-       onStartButton -> macDebug->start() (su/데몬 우회, 디바이스 없어도 동작),
-       onStopButton  -> macDebug->stop()
-   - 공격(배너/배지)도 Mac 더미 상태에서 그대로 테스트 가능
-       (daemon write 는 state!=Running 으로 skip, UI 만 동작)
- CMakeLists : macdebug.h macdebug.cpp 추가
- 검증 : cmake(Ninja) Debug 전체 빌드 성공 (20/20, SuNiffing.app 링크,
-        AUTOMOC: MacDebug/DeviceProxy 처리). 경고는 기존 pcap 2건뿐.
- 사용법 : macOS 빌드 후 Start -> 더미 리스트 표시(정렬/에이징/검색/탭/공격배너
-          확인), Stop -> 중지.
+ 한때 macdebug.h/.cpp(MacDebug) + #ifdef Q_OS_MAC 주입 경로로 UI 를 검증했으나,
+ 실효성이 낮고 코드 흐름을 해쳐 전량 삭제함.
+ 삭제/원복 내역:
+   - macdebug.h / macdebug.cpp 파일 삭제, CMakeLists 항목 제거
+   - mainwindow: MacDebug 멤버/생성자연결/start·stop 분기 제거
+   - onDaemonOutput 을 단일 함수로 원복 (processDaemonBuffer/injectDebugEvents 제거)
+   - showContents 공격 가드 원복 (daemonProcess Running 검사)
+   - onAttackDialogAccepted/stopAttack 의 setAttack 호출 제거
+   - (유지) mainwindow.h 의 QTimer* timer = nullptr 기본값 — 일반 안전개선
+ 검증 : cmake(Ninja) Debug 전체 빌드 성공 (19/19, SuNiffing.app 링크).
 
 ================================================================================
  남은 항목

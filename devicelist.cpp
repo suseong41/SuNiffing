@@ -19,24 +19,20 @@ bool DeviceProxy::filterAcceptsRow(int row, const QModelIndex& parent) const
 }
 
 // ---- DeviceDelegate ----
-
 static QColor pwrColor(int pwr)
 {
-    // dBm: 0 에 가까울수록 강함
     if (pwr >= -50) return QColor(0x2e, 0x7d, 0x32); // green
     if (pwr >= -70) return QColor(0xf9, 0xa8, 0x25); // amber
     return QColor(0xc6, 0x28, 0x28);                 // red
 }
 
-QSize DeviceDelegate::sizeHint(const QStyleOptionViewItem& option,
-                               const QModelIndex& index) const
+QSize DeviceDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     Q_UNUSED(index);
     return QSize(option.rect.width(), 60);
 }
 
-void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option,
-                           const QModelIndex& index) const
+void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const
 {
     painter->save();
 
@@ -52,13 +48,12 @@ void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option
 
     if (type == 1) mac = "FROM: " + mac;
 
-    // 배경 (테마 무관: 반투명 적색 오버레이 -> 라이트/다크 모두 자연스러움)
     if (selected)
         painter->fillRect(option.rect, option.palette.highlight());
     else if (index.row() % 2)
         painter->fillRect(option.rect, option.palette.alternateBase());
     if (attacking && !selected)
-        painter->fillRect(option.rect, QColor(0xc6, 0x28, 0x28, 70));
+        painter->fillRect(option.rect, QColor(0x8f, 0x3a, 0x3a, 80));
 
     if (faded) painter->setOpacity(0.45);
 
@@ -69,28 +64,36 @@ void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option
 
     const QRect r = option.rect.adjusted(12, 6, -12, -6);
 
-    // 좌측: ESSID (굵게) + MAC (작게/회색)
     QFont essidFont = option.font;
     essidFont.setBold(true);
-    essidFont.setPointSizeF(option.font.pointSizeF() + 2.0);
+    if (option.font.pointSizeF() > 0)
+        essidFont.setPointSizeF(option.font.pointSizeF() + 2.0);
+    else if (option.font.pixelSize() > 0)
+        essidFont.setPixelSize(option.font.pixelSize() + 2);
     painter->setFont(essidFont);
     const bool hiddenSsid = essid.startsWith("<length:") || essid.isEmpty();
     painter->setPen(hiddenSsid && !selected ? subColor : textColor);
-    const int rightReserve = 90; // PWR/CH 칸
+    const int rightReserve = 90; // PWR/CH
     QRect leftRect = r.adjusted(0, 0, -rightReserve, 0);
     painter->drawText(QRect(leftRect.x(), leftRect.y(), leftRect.width(), leftRect.height()/2),
                       Qt::AlignVCenter | Qt::AlignLeft,
                       painter->fontMetrics().elidedText(essid, Qt::ElideRight, leftRect.width()));
 
     QFont macFont = option.font;
-    macFont.setPointSizeF(option.font.pointSizeF() - 1.0);
+    if (option.font.pointSizeF() > 0)
+    {
+        macFont.setPointSizeF(option.font.pointSizeF() - 1.0);
+    } else if (option.font.pixelSize() > 0)
+    {
+        macFont.setPixelSize(option.font.pixelSize() - 1);
+    }
     painter->setFont(macFont);
     painter->setPen(subColor);
     painter->drawText(QRect(leftRect.x(), leftRect.center().y(), leftRect.width(), leftRect.height()/2),
                       Qt::AlignVCenter | Qt::AlignLeft,
                       painter->fontMetrics().elidedText(mac, Qt::ElideRight, leftRect.width()));
 
-    // 우측: PWR (신호색) + CH
+    // 우측: PWR/CH
     QRect rightRect(r.right() - rightReserve, r.y(), rightReserve, r.height());
     if (pwr != 0 && pwr != 999)
     {
@@ -108,13 +111,11 @@ void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option
         painter->drawText(QRect(rightRect.x(), rightRect.center().y(), rightRect.width(), rightRect.height()/2),
                           Qt::AlignVCenter | Qt::AlignRight, QString("CH %1").arg(ch));
     }
-
-    // 공격 대상 배지: 좌측 적색 바
     if (attacking)
     {
         painter->setOpacity(1.0);
         painter->fillRect(QRect(option.rect.left(), option.rect.top(), 4, option.rect.height()),
-                          QColor(0xc6, 0x28, 0x28));
+                          QColor(0x8f, 0x3a, 0x3a));
     }
 
     painter->restore();

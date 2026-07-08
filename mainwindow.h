@@ -1,17 +1,12 @@
 #pragma once
 #include <QMainWindow>
 #include <string>
-#include <QTableWidget>
 #include <QFile>
 #include <QDir>
 #include <QStandardPaths>
 #include <QDebug>
 #include <QProcess>
 #include <QCoreApplication>
-#include <QScroller>
-#include <QMessageBox>
-#include <QMap>
-#include <QListWidget>
 #include <QMenu>
 #include <QAction>
 #include <QClipboard>
@@ -19,7 +14,7 @@
 #include <QGestureEvent>
 #include <QTapAndHoldGesture>
 #include <QTimer>
-#include <QInputDialog>
+#include <QDialog>
 #include <QVBoxLayout>
 #include <QSpinBox>
 #include <QComboBox>
@@ -30,16 +25,15 @@
 #include <QLineEdit>
 #include <QDateTime>
 #include <QAbstractItemView>
-#include "mac.h"
-#include "devicelist.h"
+#include <QScroller>
+#include <QStyle>
+#include "./mac.h"
+#include "./devicelist.h"
+
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
-
-#ifdef Q_OS_MAC
-class MacDebug;
-#endif
 
 class MainWindow : public QMainWindow
 {
@@ -67,24 +61,19 @@ private:
     bool isRunning;
     QProcess *daemonProcess;
     QByteArray daemonBuffer;
-    void processDaemonBuffer();
-    void injectDebugEvents(const QByteArray& bytes);
-#ifdef Q_OS_MAC
-    MacDebug* macDebug = nullptr;
-#endif
 
     QTimer* timer = nullptr;
     const QList<int> hopSeq = {1, 6, 11, 2, 7, 12, 3, 8, 13, 4, 9, 5, 10}; // 미국 ~11, 일본 ~14 어댑터 찾기 iw_list
     int hopIdx = 0;
     void nextChannel();
 
-    // 장치 리스트 (model/view)
     QStandardItemModel* devModel = nullptr;
     DeviceProxy* devProxy = nullptr;
     QHash<QString, QStandardItem*> itemByKey;
     QTimer* ageTimer = nullptr;
     void ageDevices();
     void updateEmptyState();
+    void updateScanButton();
 
     void onViewToggleChange(int index);
     int currentViewMode = 0;
@@ -97,7 +86,6 @@ private:
     QString attackTargetBssid;
     int attackTargetCh = 0;
 
-    // 공격 상태 표시 (B-5)
     bool attacking = false;
     qint64 attackStartMs = 0;
     QString attackTypeName;
@@ -109,4 +97,5 @@ private:
 };
 
 static QString dropPcapDaemon();
+static QString dropNexmonLib();
 static ST_MAC qstringToMac(const QString& macStr);

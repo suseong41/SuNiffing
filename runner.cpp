@@ -98,7 +98,7 @@ void Runner::RXloop(const std::string& dev)
         return;
     }
 
-    pcap_setnonblock(pcapRX, 1, errbuf);
+    int res0 = pcap_setnonblock(pcapRX, 1, errbuf);
 
     // TX쓰레드
     int pcap_fd = pcap_get_selectable_fd(pcapRX);
@@ -242,7 +242,7 @@ void Runner::RXloop(const std::string& dev)
                     memcpy(newPacket + insertTagLoc, csaTag, 5);
                     memcpy(newPacket + insertTagLoc + 5, packet + insertTagLoc, remainLen);
 
-                    pcap_sendpacket(pcapTX, newPacket, newPacketLen);
+                    int res1 = pcap_sendpacket(pcapTX, newPacket, newPacketLen);
                     // CSA End
                 }
 

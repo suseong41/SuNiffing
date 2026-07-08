@@ -2,7 +2,6 @@
 #include <QSortFilterProxyModel>
 #include <QStyledItemDelegate>
 
-// 모델 행에 저장하는 커스텀 role (itemRole 과 겹치지 않게 +100 부터)
 namespace dev
 {
 enum Role
@@ -12,14 +11,14 @@ enum Role
     PwrRole,                      // int (dBm, 정렬 키)
     ChRole,                       // int (채널, 0 = 미상/없음)
     TypeRole,                     // int (0=AP, 1=STATION)
-    FadedRole,                    // bool (에이징 흐림)
+    FadedRole,                    // bool (에이징)
     LastSeenRole,                 // qint64 (ms epoch)
     KeyRole,                      // QString ("type_mac")
-    AttackingRole                 // bool (현재 공격 대상 = 배지)
+    AttackingRole                 // bool (현재 공격 대상)
 };
 }
 
-// 타입(AP/STATION) + SSID 검색 필터. 정렬은 setSortRole(PwrRole) 로 위임.
+// SSID/MAC 검색 필터
 class DeviceProxy : public QSortFilterProxyModel
 {
     Q_OBJECT
@@ -37,14 +36,12 @@ private:
     QString m_search;
 };
 
-// 카드형 행 렌더링: ESSID(굵게) + MAC(회색) / PWR(신호색) + CH
+// ESSID | MAC | PWR | CH
 class DeviceDelegate : public QStyledItemDelegate
 {
 public:
     explicit DeviceDelegate(QObject* parent = nullptr) : QStyledItemDelegate(parent) {}
 
-    void paint(QPainter* painter, const QStyleOptionViewItem& option,
-               const QModelIndex& index) const override;
-    QSize sizeHint(const QStyleOptionViewItem& option,
-                   const QModelIndex& index) const override;
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override;
+    QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const override;
 };

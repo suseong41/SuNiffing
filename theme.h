@@ -4,8 +4,6 @@
 #include <QColor>
 #include <QStyleFactory>
 
-// 전역 다크 테마 (B-6): 흩어진 인라인 QSS 를 한곳으로 중앙화.
-// 위젯별 스타일은 objectName 셀렉터로 지정 -> 코드/ .ui 에서 setStyleSheet 제거.
 inline void applyDarkTheme(QApplication& app)
 {
     app.setStyle(QStyleFactory::create("Fusion"));
@@ -28,25 +26,40 @@ inline void applyDarkTheme(QApplication& app)
     app.setPalette(p);
 
     app.setStyleSheet(R"(
-        #currentCh        { color: #87CEFA; font-weight: bold; }
+        #currentCh        { color:#87CEFA; font-weight:bold; background:#1b1b1b; border:1px solid #2c2c2c; border-radius:8px; padding:6px 12px; }
         #emptyLabel       { color: #888888; font-size: 14pt; }
-        /* 공격 배너 (모던 alert) */
-        #attackBanner     { background:#2b1719; border:1px solid #6e2b30; border-radius:10px; }
-        #attackLabel      { background:transparent; color:#f2dada; font-size:13px; padding:2px 6px; }
-        #attackStopButton { background:#e5484d; color:white; font-weight:600; padding:8px 18px; border:none; border-radius:8px; }
-        #attackStopButton:hover   { background:#f0575b; }
-        #attackStopButton:pressed { background:#cf3d42; }
+        /* 공격 배너 (다크 톤 뮤트 레드) */
+        #attackBanner     { background:#241618; border:1px solid #4f2a2d; border-radius:10px; }
+        #attackLabel      { background:transparent; color:#e6cfcf; font-size:13px; padding:2px 6px; }
+        #attackStopButton { background:#8f3a3a; color:#f0dede; font-weight:600; padding:8px 18px; border:none; border-radius:8px; }
+        #attackStopButton:hover   { background:#9c4444; }
+        #attackStopButton:pressed { background:#7c3232; }
 
         QPushButton          { padding:6px 12px; border:1px solid #555; border-radius:4px; background:#2d2d2d; }
         QPushButton:hover    { background:#3a3a3a; }
         QPushButton:checked  { background:#3779c2; color:white; border-color:#3779c2; }
         QPushButton:disabled { color:#777; }
 
-        QLineEdit { padding:6px; border:1px solid #555; border-radius:4px; background:#252525; }
-        QComboBox { padding:6px; border:1px solid #555; border-radius:4px; background:#252525; }
+        /* Start/Stop 토글 버튼 (다크 톤에 맞춘 뮤트 초록/빨강) */
+        #scanButton                        { background:#2c5233; color:#dfe7e0; font-weight:600; border:1px solid #34613c; border-radius:6px; }
+        #scanButton:hover                  { background:#33603c; }
+        #scanButton[running="true"]        { background:#5e2b2b; color:#f0dede; border-color:#743636; }
+        #scanButton[running="true"]:hover  { background:#6e3232; }
+
+        QLineEdit { padding:6px; border:1px solid #555; border-radius:4px; background:#252525; color:#e0e0e0; }
+        QComboBox { padding:6px 10px; border:1px solid #555; border-radius:4px; background:#252525; color:#e0e0e0; }
+        QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: center right; width:36px; border:none; }
+        QComboBox QAbstractItemView {
+            background:#252525; color:#e0e0e0; border:1px solid #555;
+            selection-background-color:#3779c2; selection-color:#ffffff; outline:0;
+        }
+        QComboBox QAbstractItemView::item { min-height:44px; padding:2px 8px; }
         QListView { background:#1e1e1e; border:1px solid #333; }
 
-        /* 세그먼티드 컨트롤 (AP | STATION) — 풀폭 얇은 탭바 */
+        QStatusBar { color:#d0d0d0; }
+        QStatusBar::item { border:none; }
+
+        /* 세그먼티드 컨트롤 (AP | STATION) */
         #segToggle { background:#202020; border:1px solid #303030; border-radius:8px; }
         #segToggle QPushButton { border:none; background:transparent; color:#9a9a9a; padding:4px 0; border-radius:6px; font-weight:600; }
         #segToggle QPushButton:hover:!checked { color:#dddddd; }

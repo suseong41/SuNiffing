@@ -1,11 +1,8 @@
-#include "mainwindow.h"
+#include "./mainwindow.h"
 #include "./device.h"
 #include "./ui_mainwindow.h"
-#include "./runner.h"
 #include "./ipc_proto.h"
-#ifdef Q_OS_MAC
-#include "./macdebug.h"
-#endif
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -15,9 +12,22 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     this->setWindowTitle("SuNiffing");
 
-    // 버튼 연결
-    connect(ui->startButton, &QPushButton::clicked, this, &MainWindow::onStartButton);
-    connect(ui->stopButton, &QPushButton::clicked, this, &MainWindow::onStopButton);
+    // export
+    qputenv("PATH", qgetenv("PATH") + ":/data/local/tmp");
+
+    connect(ui->scanButton, &QPushButton::clicked, this, [this]{
+        const bool starting = !isRunning;
+        ui->scanButton->setText(starting ? "■ Stop" : "▶ Start");
+        ui->scanButton->setProperty("running", starting);
+        ui->scanButton->style()->unpolish(ui->scanButton);
+        ui->scanButton->style()->polish(ui->scanButton);
+        ui->scanButton->repaint();
+
+        if(starting) onStartButton();
+        else         onStopButton();
+        updateScanButton();
+    });
+    updateScanButton();
 
     // 디바이스 연결
     ui->devIn->clear();
@@ -34,18 +44,22 @@ MainWindow::MainWindow(QWidget *parent)
     connect(daemonProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onDaemonOutput);
     connect(daemonProcess, &QProcess::readyReadStandardError, this, &MainWindow::onDaemonError);
 
-    // 장치 리스트: model/view + 카드 델리게이트
+    // 장치 리스트
     devModel = new QStandardItemModel(this);
     devProxy = new DeviceProxy(this);
     devProxy->setSourceModel(devModel);
     devProxy->setSortRole(dev::PwrRole);
     devProxy->setDynamicSortFilter(true);
-    devProxy->sort(0, Qt::DescendingOrder);   // 강한 신호(PWR) 위로
+    devProxy->sort(0, Qt::DescendingOrder);
 
     ui->listView->setModel(devProxy);
     ui->listView->setItemDelegate(new DeviceDelegate(this));
     ui->listView->setSelectionMode(QAbstractItemView::SingleSelection);
-    ui->listView->setEditTriggers(QAbstractItemView::NoEditTriggers); // 더블클릭 인라인 편집 비활성
+    ui->listView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->listView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->listView->setResizeMode(QListView::Adjust);
+    QScroller::grabGesture(ui->listView->viewport(), QScroller::LeftMouseButtonGesture);
 
     // 꾹 눌렀을 때 메뉴
     ui->listView->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -62,34 +76,28 @@ MainWindow::MainWindow(QWidget *parent)
     connect(devProxy, &QAbstractItemModel::rowsRemoved,  this, &MainWindow::updateEmptyState);
     connect(devProxy, &QAbstractItemModel::modelReset,   this, &MainWindow::updateEmptyState);
 
-    // 에이징: 미관측 항목 흐림/제거
+    // 시간에 따라 정상 -> 흐림
     ageTimer = new QTimer(this);
     connect(ageTimer, &QTimer::timeout, this, &MainWindow::ageDevices);
     ageTimer->start(1000);
 
-    // 공격 상태 배너 + 원클릭 중단 (B-5)
-    ui->attackBanner->setAttribute(Qt::WA_StyledBackground, true); // #attackBanner 배경 QSS 적용
+    // 공격 상태 배너 + 원클릭 중단
+    ui->attackBanner->setAttribute(Qt::WA_StyledBackground, true);
     ui->attackBanner->setVisible(false);
+    ui->attackLabel->setWordWrap(true);
+    ui->attackLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     connect(ui->attackStopButton, &QPushButton::clicked, this, &MainWindow::stopAttack);
     attackTimer = new QTimer(this);
     connect(attackTimer, &QTimer::timeout, this, &MainWindow::updateAttackBanner);
 
-    // 홉핑 채널 (#currentCh 스타일은 theme.h 전역 QSS 에서)
-
-    // AP | STATION 전환 (세그먼티드 컨트롤)
-    ui->segToggle->setAttribute(Qt::WA_StyledBackground, true); // #segToggle 배경 QSS 적용
+    // AP | STATION 전환
+    ui->segToggle->setAttribute(Qt::WA_StyledBackground, true);
     QButtonGroup* viewGroup = new QButtonGroup(this);
     viewGroup->setExclusive(true);
     viewGroup->addButton(ui->btnAP, 0);
     viewGroup->addButton(ui->btnStation, 1);
     connect(viewGroup, &QButtonGroup::idClicked, this, &MainWindow::onViewToggleChange);
     onViewToggleChange(0);
-
-#ifdef Q_OS_MAC
-    // macOS: 실제 인터페이스 없이 더미 데이터로 UI 테스트
-    macDebug = new MacDebug(this);
-    macDebug->onEvents = [this](const QByteArray& b){ injectDebugEvents(b); };
-#endif
 }
 
 MainWindow::~MainWindow()
@@ -111,7 +119,14 @@ void MainWindow::runDaemon()
     QString targetPath = dropPcapDaemon();
     if(targetPath != "")
     {
-        QString cmd = QString("LD_PRELOAD=/data/local/tmp/libnexmon.so %1 %2")
+        QString libPath = dropNexmonLib();
+        QString pre;
+        if(libPath != "")
+        {
+            pre = QString("cp %1 /data/local/tmp/libnexmon.so; chmod 644 /data/local/tmp/libnexmon.so; ").arg(libPath);
+        }
+
+        QString cmd = pre + QString("LD_PRELOAD=/data/local/tmp/libnexmon.so %1 %2")
         .arg(targetPath, QString::fromStdString(devType));
         args << "-c" << cmd;
         daemonProcess->start("su", args);
@@ -129,29 +144,19 @@ void MainWindow::onStartButton()
 {
     // 앱: 데몬 실행
     // 데몬: 모니터 모드 실행
-
-    // 재실행시 무시
     if(isRunning) return;
 
-#ifdef Q_OS_MAC
-    // macOS: 실제 인터페이스/su/데몬 없이 더미 데이터로 UI 테스트
-    devType = ui->devIn->currentText().toStdString();
-    ui->devIn->setEnabled(false);
-    macDebug->start();
-    isRunning = true;
-    return;
-#endif
-
-    QString dev = ui->devIn->currentText();
+    QString dev = ui->devIn->currentText().trimmed();
     if(dev.isEmpty())
     {
-        QMessageBox::warning(this, "ERROR", "선택된 디바이스 없음");
+        ui->statusbar->showMessage("인터페이스가 선택되지 않았습니다.", 4000);
+        ui->devIn->setFocus();
         return;
     }
     devType = dev.toStdString();
     ui->devIn->setEnabled(false);
 
-    // 이상하게 nexutil c1은 드라이버가 뻣음..
+    // nexutil c1은 드라이버가 뻣음 -> k1 사용
     QString cmd = QString("svc wifi disable; "
                         "sleep 1.5; "
                         "ifconfig %1 up; "
@@ -161,39 +166,22 @@ void MainWindow::onStartButton()
 
     qDebug() << "[EXEC] " << cmd;
 
-    // 모니터 모드 준비를 비동기 실행 (UI 스레드 블록 -> ANR 방지)
-    ui->startButton->setEnabled(false);
-    QProcess* setup = new QProcess(this);
-    connect(setup, &QProcess::finished, this,
-            [this, setup](int, QProcess::ExitStatus)
-    {
-        QString err = QString::fromUtf8(setup->readAllStandardError()).trimmed();
-        QString out = QString::fromUtf8(setup->readAllStandardOutput()).trimmed();
-        if(!out.isEmpty()) qDebug() << "[OUT]" << out;
-        if(!err.isEmpty()) qDebug() << "[ERR]" << err;
-        setup->deleteLater();
+    QProcess p;
+    p.start("su", QStringList() << "-c" << cmd);
+    p.waitForFinished(3000);
 
-        // 채널 홉핑
-        timer = new QTimer(this);
-        connect(timer, &QTimer::timeout, this, &MainWindow::nextChannel);
-        timer->start(500); // 0.5s
+    QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
+    QString out = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    if(!out.isEmpty()) qDebug() << "[OUT]" << out;
+    if(!err.isEmpty()) qDebug() << "[ERR]" << err;
 
-        runDaemon();
-        isRunning = true;
-        ui->startButton->setEnabled(true);
-    });
-    connect(setup, &QProcess::errorOccurred, this,
-            [this, setup](QProcess::ProcessError e)
-    {
-        if(e == QProcess::FailedToStart)
-        {
-            qDebug() << "[ERR] setup failed to start:" << setup->errorString();
-            setup->deleteLater();
-            ui->startButton->setEnabled(true);
-            ui->devIn->setEnabled(true);
-        }
-    });
-    setup->start("su", QStringList() << "-c" << cmd);
+    // 채널 홉핑
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &MainWindow::nextChannel);
+    timer->start(500); // 0.5s
+
+    runDaemon();
+    isRunning = true;
 }
 
 void MainWindow::onStopButton()
@@ -201,7 +189,6 @@ void MainWindow::onStopButton()
     if(!isRunning) return;
     isRunning = false;
 
-    // 공격 중이었다면 상태/배너 정리 (데몬은 곧 종료됨)
     if(attacking)
     {
         attacking = false;
@@ -209,13 +196,6 @@ void MainWindow::onStopButton()
         markAttackTarget(QString());
         ui->attackBanner->setVisible(false);
     }
-
-#ifdef Q_OS_MAC
-    // macOS: 더미 주입 중지
-    macDebug->stop();
-    ui->devIn->setEnabled(true);
-    return;
-#endif
 
     if(timer != nullptr && timer->isActive())
     {
@@ -226,37 +206,20 @@ void MainWindow::onStopButton()
 
     if (daemonProcess != nullptr && daemonProcess->state() == QProcess::Running)
     {
-        daemonProcess->terminate();   // 동기 waitForFinished 제거 (ANR 방지)
+        daemonProcess->terminate();
+        daemonProcess->waitForFinished(2000);
     }
 
-    // todo: interface down , up
-    // 인터페이스 복구를 비동기 실행 (UI 스레드 블록 -> ANR 방지)
-    ui->stopButton->setEnabled(false);
     QString dev = ui->devIn->currentText();
     QString cmd = QString("nexutil -m0; svc wifi enable").arg(dev);
 
-    QProcess* cleanup = new QProcess(this);
-    connect(cleanup, &QProcess::finished, this,
-            [this, cleanup](int, QProcess::ExitStatus)
-    {
-        QString err = QString::fromUtf8(cleanup->readAllStandardError()).trimmed();
-        if(!err.isEmpty()) qDebug() << "[CLEANUP ERROR]" << err;
-        cleanup->deleteLater();
-        ui->devIn->setEnabled(true);
-        ui->stopButton->setEnabled(true);
-    });
-    connect(cleanup, &QProcess::errorOccurred, this,
-            [this, cleanup](QProcess::ProcessError e)
-    {
-        if(e == QProcess::FailedToStart)
-        {
-            qDebug() << "[CLEANUP ERROR] failed to start:" << cleanup->errorString();
-            cleanup->deleteLater();
-            ui->devIn->setEnabled(true);
-            ui->stopButton->setEnabled(true);
-        }
-    });
-    cleanup->start("su", QStringList() << "-c" << cmd);
+    QProcess p;
+    p.start("su", QStringList() << "-c" << cmd);
+    p.waitForFinished(5000);
+    QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
+    if(!err.isEmpty()) qDebug() << "[CLEANUP ERROR]" << err;
+
+    ui->devIn->setEnabled(true);
 }
 
 void MainWindow::onRender() {}
@@ -264,18 +227,8 @@ void MainWindow::onRender() {}
 void MainWindow::onDaemonOutput()
 {
     if(daemonProcess == nullptr) return;
+
     daemonBuffer.append(daemonProcess->readAllStandardOutput());
-    processDaemonBuffer();
-}
-
-void MainWindow::injectDebugEvents(const QByteArray& bytes)
-{
-    daemonBuffer.append(bytes);
-    processDaemonBuffer();
-}
-
-void MainWindow::processDaemonBuffer()
-{
     const int packetSize = sizeof(ST_IPC_EVENT);
     int totalBytes = daemonBuffer.size();
     int validBytes = (totalBytes/packetSize) * packetSize;
@@ -317,7 +270,7 @@ void MainWindow::processDaemonBuffer()
                 displayEssid = "(Not Associated)";
             else
                 displayEssid = "To: " + linked;
-            ch = 0; // STA 행은 채널 표시 안 함
+            ch = 0;
         }
         else continue;
 
@@ -327,7 +280,6 @@ void MainWindow::processDaemonBuffer()
         QStandardItem* item = itemByKey.value(key, nullptr);
         if(item)
         {
-            // 갱신 (display::updateInfo 가드와 동일: 유효값만 덮어씀)
             if(!displayEssid.isEmpty()) item->setData(displayEssid, dev::EssidRole);
             if(pwr != 0 && pwr != 999)  item->setData(pwr, dev::PwrRole);
             if(ch > 0)                  item->setData(ch, dev::ChRole);
@@ -414,17 +366,12 @@ void MainWindow::showContents(const QPoint &pos)
     }
     else if(itemType == 0 && (selectedAction == deauthAct || selectedAction == authAct || selectedAction == csaAct)) // Deauth attack
     {
-#ifdef Q_OS_MAC
-        const bool canAttack = isRunning;            // 더미 모드: 데몬 없이 허용
-#else
-        const bool canAttack = (daemonProcess && daemonProcess->state() == QProcess::Running);
-#endif
-        if(canAttack)
+        if(daemonProcess && daemonProcess->state() == QProcess::Running)
         {
             QStringList stationList;
             stationList << "Broadcast (FF:FF:FF:FF:FF:FF)";
 
-            for(int r=0; r<devModel->rowCount(); r++)
+            for(int r=0; r < devModel->rowCount(); r++)
             {
                 QStandardItem* stItem = devModel->item(r);
                 if(stItem && stItem->data(dev::TypeRole).toInt() == 1)
@@ -445,7 +392,7 @@ void MainWindow::showContents(const QPoint &pos)
 
             QVBoxLayout *layout = new QVBoxLayout(attackDialog);
 
-            QLabel *chLabel = new QLabel("Target Channel (goto):", attackDialog);
+            QLabel *chLabel = new QLabel("Target Channel:", attackDialog);
             attackChSpin = new QSpinBox(attackDialog);
             attackChSpin->setRange(1, 14);
             attackChSpin->setValue(11);
@@ -463,9 +410,14 @@ void MainWindow::showContents(const QPoint &pos)
             attackStCombo->addItems(stationList);
             layout->addWidget(attackStCombo);
 
-            QPushButton *okBtn = new QPushButton("Attack Start", attackDialog);
-            layout->addWidget(okBtn);
+            QHBoxLayout *btnRow = new QHBoxLayout();
+            QPushButton *cancelBtn = new QPushButton("취소", attackDialog);
+            QPushButton *okBtn = new QPushButton("선택₩", attackDialog);
+            btnRow->addWidget(cancelBtn);
+            btnRow->addWidget(okBtn);
+            layout->addLayout(btnRow);
 
+            connect(cancelBtn, &QPushButton::clicked, attackDialog, &QDialog::reject);
             connect(okBtn, &QPushButton::clicked, attackDialog, &QDialog::accept);
 
             connect(attackDialog, &QDialog::accepted, this, &MainWindow::onAttackDialogAccepted);
@@ -503,8 +455,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::onViewToggleChange(int index)
 {
     currentViewMode = index;
-
-    // 프로그램적 호출 시 버튼 체크 상태 동기화 (사용자 클릭은 자동)
     if(index == 0) ui->btnAP->setChecked(true);
     else           ui->btnStation->setChecked(true);
 
@@ -516,22 +466,22 @@ void MainWindow::ageDevices()
 {
     if(!devModel) return;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const qint64 FADE_MS = 15000;   // 15초 미관측 -> 흐림
-    const qint64 REMOVE_MS = 45000; // 45초 미관측 -> 제거
+    const qint64 FADE_MS = 15000;   // 15초 -> 흐림
+    const qint64 REMOVE_MS = 45000; // 45초 -> 제거
 
     for(int row = devModel->rowCount()-1; row >= 0; --row)
     {
         QStandardItem* it = devModel->item(row);
         if(!it) continue;
         const qint64 age = now - it->data(dev::LastSeenRole).toLongLong();
-        if(age > REMOVE_MS)
+        if(REMOVE_MS < age)
         {
             itemByKey.remove(it->data(dev::KeyRole).toString());
-            devModel->removeRow(row);   // QStandardItem 삭제됨
+            devModel->removeRow(row);
         }
         else
         {
-            const bool faded = age > FADE_MS;
+            const bool faded = FADE_MS < age;
             if(it->data(dev::FadedRole).toBool() != faded)
                 it->setData(faded, dev::FadedRole);
         }
@@ -544,6 +494,14 @@ void MainWindow::updateEmptyState()
     const bool empty = (devProxy == nullptr) || (devProxy->rowCount() == 0);
     ui->emptyLabel->setVisible(empty);
     ui->listView->setVisible(!empty);
+}
+
+void MainWindow::updateScanButton()
+{
+    ui->scanButton->setText(isRunning ? "■ Stop" : "▶ Start");
+    ui->scanButton->setProperty("running", isRunning);
+    ui->scanButton->style()->unpolish(ui->scanButton);
+    ui->scanButton->style()->polish(ui->scanButton);
 }
 
 void MainWindow::stopAttack()
@@ -561,13 +519,9 @@ void MainWindow::stopAttack()
 
     attacking = false;
     if(attackTimer) attackTimer->stop();
-    markAttackTarget(QString());        // 배지 해제
+    markAttackTarget(QString());
     ui->attackBanner->setVisible(false);
     ui->statusbar->showMessage("Attack Stopped", 3000);
-
-#ifdef Q_OS_MAC
-    macDebug->setAttack(false, 0, QString(), 0);
-#endif
 }
 
 void MainWindow::updateAttackBanner()
@@ -578,13 +532,13 @@ void MainWindow::updateAttackBanner()
         return;
     }
     const qint64 elapsed = (QDateTime::currentMSecsSinceEpoch() - attackStartMs) / 1000;
-    const QString dot = (elapsed % 2 == 0) ? "#ff5c5c" : "#7a3b3b"; // 라이브 깜빡임
+    const QString dot = (elapsed % 2 == 0) ? "#c96a6a" : "#6e3a3a";
     ui->attackLabel->setText(QString(
-        "<span style='color:%1; font-weight:700;'>●</span>"
-        "&nbsp;<span style='color:#ff8a8a; font-weight:700;'>공격 중</span>"
-        "&nbsp;&nbsp;<span style='color:#cfcfcf;'>%2</span>"
-        "&nbsp;<span style='color:#7a7a7a;'>→</span>&nbsp;<b style='color:#ffffff;'>%3</b>"
-        "&nbsp;&nbsp;<span style='color:#a98a8a;'>경과 %4초</span>")
+        "<span style='color:%1; font-weight:700;'>●</span> "
+        "<span style='color:#d38a8a; font-weight:700;'>공격 중</span>  "
+        "<span style='color:#cfcfcf;'>%2</span> "
+        "<span style='color:#7a7a7a;'>→</span> <b style='color:#ffffff;'>%3</b>  "
+        "<span style='color:#a98a8a;'> %4초</span>")
         .arg(dot, attackTypeName, attackTargetMac).arg(elapsed));
     ui->attackBanner->setVisible(true);
 }
@@ -592,14 +546,12 @@ void MainWindow::updateAttackBanner()
 void MainWindow::markAttackTarget(const QString& key)
 {
     if(!devModel) return;
-    // 기존 배지 모두 해제
     for(int row = 0; row < devModel->rowCount(); ++row)
     {
         QStandardItem* it = devModel->item(row);
         if(it && it->data(dev::AttackingRole).toBool())
             it->setData(false, dev::AttackingRole);
     }
-    // 대상 배지 설정
     if(!key.isEmpty())
     {
         QStandardItem* it = itemByKey.value(key, nullptr);
@@ -638,31 +590,23 @@ void MainWindow::onAttackDialogAccepted()
         daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
     }
 
-    // 공격 상태 상시 표시 시작
     attacking = true;
     attackStartMs = QDateTime::currentMSecsSinceEpoch();
     attackTypeName = (attackType == 1) ? "Deauth" : (attackType == 2) ? "Auth" : "CSA";
     attackTargetMac = pureMac;
-    markAttackTarget("0_" + attackTargetBssid);  // 대상 AP 행 배지
+    markAttackTarget("0_" + attackTargetBssid);
     updateAttackBanner();
     attackTimer->start(1000);
-
-#ifdef Q_OS_MAC
-    // 더미 모드: 가상 공격 효과 반영 (Deauth=STA 끊김, CSA=채널 변경)
-    macDebug->setAttack(true, attackType, attackTargetBssid, (attackType == 3) ? chToMove : 0);
-#endif
 }
 
 static QString dropPcapDaemon()
 {
     // AppDataLocation -> /data/data/<패키지명>/files
-    // QStandardPaths::writeableLocation -> 쓰기권한을 가지는 시스템 경로 QString
     QString targetDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir dir(targetDir);
 
     if(!dir.exists())
     {
-        // .은 현재 디렉터리
         dir.mkpath(".");
     }
 
@@ -671,10 +615,8 @@ static QString dropPcapDaemon()
 
     if(targetFile.exists())
     {
-        // 기존 파일 발견시 제거
         targetFile.remove();
     }
-    // assets에서 추출해옴
     QFile assetFile("assets:/suseong");
 
     // chmod 755
@@ -683,6 +625,36 @@ static QString dropPcapDaemon()
         QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
                                         QFileDevice::ReadGroup | QFileDevice::ExeGroup |
                                         QFileDevice::ReadOther | QFileDevice::ExeOther);
+        return targetPath;
+    }
+
+    return QString("");
+}
+
+static QString dropNexmonLib()
+{
+    QString targetDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir dir(targetDir);
+
+    if(!dir.exists())
+    {
+        dir.mkpath(".");
+    }
+
+    QString targetPath = targetDir + "/libnexmon.so";
+        QFile targetFile(targetPath);
+
+    if(targetFile.exists())
+    {
+        targetFile.remove();
+    }
+    QFile assetFile("assets:/libnexmon.so");
+
+    // chmod 644
+    if(assetFile.copy(targetPath))
+    {
+        QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                        QFileDevice::ReadGroup | QFileDevice::ReadOther);
         return targetPath;
     }
 

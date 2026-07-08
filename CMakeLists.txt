@@ -35,7 +35,6 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         mac.cpp
         devicelist.h devicelist.cpp
         theme.h
-        macdebug.h macdebug.cpp
         ipc_proto.h
     )
 

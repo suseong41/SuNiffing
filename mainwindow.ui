@@ -28,34 +28,36 @@
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>48</height>
+          <height>34</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>34</height>
          </size>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="startButton">
+       <widget class="QPushButton" name="scanButton">
         <property name="minimumSize">
          <size>
-          <width>0</width>
-          <height>48</height>
+          <width>104</width>
+          <height>34</height>
          </size>
         </property>
-        <property name="text">
-         <string>Start</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="stopButton">
-        <property name="minimumSize">
+        <property name="maximumSize">
          <size>
-          <width>0</width>
-          <height>48</height>
+          <width>16777215</width>
+          <height>34</height>
          </size>
         </property>
+        <property name="cursor">
+         <cursorShape>PointingHandCursor</cursorShape>
+        </property>
         <property name="text">
-         <string>Stop</string>
+         <string>▶ Start</string>
         </property>
        </widget>
       </item>
@@ -229,11 +231,28 @@
      </widget>
     </item>
     <item>
-     <widget class="QLabel" name="currentCh">
-      <property name="text">
-       <string>CH: 0</string>
-      </property>
-     </widget>
+     <layout class="QHBoxLayout" name="footerBar">
+      <item>
+       <widget class="QLabel" name="currentCh">
+        <property name="text">
+         <string>CH: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="footerSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>
