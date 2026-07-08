@@ -1,12 +1,13 @@
 #include "mainwindow.h"
-
+#include "theme.h"
 #include <QApplication>
 
 int main(int argc, char *argv[])
 {
-    QApplication a(argc, argv);
+    QApplication app(argc, argv);
+    applyDarkTheme(app);
     qDebug() << "Debugger Hello";
-    MainWindow w;
-    w.show();
-    return a.exec();
+    MainWindow win;
+    win.show();
+    return app.exec();
 }

@@ -3,8 +3,6 @@
 #include <string>
 #include <pcap/pcap.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <iostream>
 #include <thread>
 #include <mutex>
 #include <atomic>

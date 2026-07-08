@@ -28,7 +28,7 @@ elseif(ANDROID)
     target_link_libraries(suseong PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../libpcap/build/Qt_6_10_2_for_Android_arm64_v8a-Debug/libpcap.a")
 endif()
 
-# POST_BUILD: 명령이 대상이 빌드된 후에 실행된다는 것을 지정합니다.
+# POST_BUILD
 if(APPLE)
     add_custom_command(TARGET suseong POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:suseong> ${CMAKE_CURRENT_BINARY_DIR}/../SuNiffing.app/Contents/MacOS/suseong
@@ -37,5 +37,6 @@ elseif(ANDROID)
     add_custom_command(TARGET suseong POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:suseong> ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets/suseong
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/libnexmon.so ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets/libnexmon.so
     )
 endif()

@@ -1,9 +1,8 @@
-#include "mainwindow.h"
+#include "./mainwindow.h"
 #include "./device.h"
 #include "./ui_mainwindow.h"
-#include "./runner.h"
-#include "./display.h"
 #include "./ipc_proto.h"
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -13,9 +12,22 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     this->setWindowTitle("SuNiffing");
 
-    // 버튼 연결
-    connect(ui->startButton, &QPushButton::clicked, this, &MainWindow::onStartButton);
-    connect(ui->stopButton, &QPushButton::clicked, this, &MainWindow::onStopButton);
+    // export
+    qputenv("PATH", qgetenv("PATH") + ":/data/local/tmp");
+
+    connect(ui->scanButton, &QPushButton::clicked, this, [this]{
+        const bool starting = !isRunning;
+        ui->scanButton->setText(starting ? "■ Stop" : "▶ Start");
+        ui->scanButton->setProperty("running", starting);
+        ui->scanButton->style()->unpolish(ui->scanButton);
+        ui->scanButton->style()->polish(ui->scanButton);
+        ui->scanButton->repaint();
+
+        if(starting) onStartButton();
+        else         onStopButton();
+        updateScanButton();
+    });
+    updateScanButton();
 
     // 디바이스 연결
     ui->devIn->clear();
@@ -32,17 +44,59 @@ MainWindow::MainWindow(QWidget *parent)
     connect(daemonProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::onDaemonOutput);
     connect(daemonProcess, &QProcess::readyReadStandardError, this, &MainWindow::onDaemonError);
 
+    // 장치 리스트
+    devModel = new QStandardItemModel(this);
+    devProxy = new DeviceProxy(this);
+    devProxy->setSourceModel(devModel);
+    devProxy->setSortRole(dev::PwrRole);
+    devProxy->setDynamicSortFilter(true);
+    devProxy->sort(0, Qt::DescendingOrder);
+
+    ui->listView->setModel(devProxy);
+    ui->listView->setItemDelegate(new DeviceDelegate(this));
+    ui->listView->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->listView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->listView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    ui->listView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    ui->listView->setResizeMode(QListView::Adjust);
+    QScroller::grabGesture(ui->listView->viewport(), QScroller::LeftMouseButtonGesture);
+
     // 꾹 눌렀을 때 메뉴
-    ui->listWidget->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(ui->listWidget, &QListWidget::customContextMenuRequested, this, &MainWindow::showContents);
-    ui->listWidget->viewport()->installEventFilter(this);
-    ui->listWidget->viewport()->grabGesture(Qt::TapAndHoldGesture);
+    ui->listView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(ui->listView, &QListView::customContextMenuRequested, this, &MainWindow::showContents);
+    ui->listView->viewport()->installEventFilter(this);
+    ui->listView->viewport()->grabGesture(Qt::TapAndHoldGesture);
 
-    // 홉핑 채널
-    ui->currentCh->setStyleSheet("color: #87CEFA; font-weight: bold;");
+    // SSID/MAC 검색 + 빈 상태 갱신
+    connect(ui->searchEdit, &QLineEdit::textChanged, this, [this](const QString& s){
+        devProxy->setSearch(s);
+        updateEmptyState();
+    });
+    connect(devProxy, &QAbstractItemModel::rowsInserted, this, &MainWindow::updateEmptyState);
+    connect(devProxy, &QAbstractItemModel::rowsRemoved,  this, &MainWindow::updateEmptyState);
+    connect(devProxy, &QAbstractItemModel::modelReset,   this, &MainWindow::updateEmptyState);
 
-    // AP | STATION 전환 토글
-    connect(ui->viewToggle, &QSlider::valueChanged, this, &MainWindow::onViewToggleChange);
+    // 시간에 따라 정상 -> 흐림
+    ageTimer = new QTimer(this);
+    connect(ageTimer, &QTimer::timeout, this, &MainWindow::ageDevices);
+    ageTimer->start(1000);
+
+    // 공격 상태 배너 + 원클릭 중단
+    ui->attackBanner->setAttribute(Qt::WA_StyledBackground, true);
+    ui->attackBanner->setVisible(false);
+    ui->attackLabel->setWordWrap(true);
+    ui->attackLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    connect(ui->attackStopButton, &QPushButton::clicked, this, &MainWindow::stopAttack);
+    attackTimer = new QTimer(this);
+    connect(attackTimer, &QTimer::timeout, this, &MainWindow::updateAttackBanner);
+
+    // AP | STATION 전환
+    ui->segToggle->setAttribute(Qt::WA_StyledBackground, true);
+    QButtonGroup* viewGroup = new QButtonGroup(this);
+    viewGroup->setExclusive(true);
+    viewGroup->addButton(ui->btnAP, 0);
+    viewGroup->addButton(ui->btnStation, 1);
+    connect(viewGroup, &QButtonGroup::idClicked, this, &MainWindow::onViewToggleChange);
     onViewToggleChange(0);
 }
 
@@ -65,7 +119,14 @@ void MainWindow::runDaemon()
     QString targetPath = dropPcapDaemon();
     if(targetPath != "")
     {
-        QString cmd = QString("LD_PRELOAD=/data/local/tmp/libnexmon.so %1 %2")
+        QString libPath = dropNexmonLib();
+        QString pre;
+        if(libPath != "")
+        {
+            pre = QString("cp %1 /data/local/tmp/libnexmon.so; chmod 644 /data/local/tmp/libnexmon.so; ").arg(libPath);
+        }
+
+        QString cmd = pre + QString("LD_PRELOAD=/data/local/tmp/libnexmon.so %1 %2")
         .arg(targetPath, QString::fromStdString(devType));
         args << "-c" << cmd;
         daemonProcess->start("su", args);
@@ -83,20 +144,19 @@ void MainWindow::onStartButton()
 {
     // 앱: 데몬 실행
     // 데몬: 모니터 모드 실행
-
-    // 재실행시 무시
     if(isRunning) return;
 
-    QString dev = ui->devIn->currentText();
+    QString dev = ui->devIn->currentText().trimmed();
     if(dev.isEmpty())
     {
-        QMessageBox::warning(this, "ERROR", "선택된 디바이스 없음");
+        ui->statusbar->showMessage("인터페이스가 선택되지 않았습니다.", 4000);
+        ui->devIn->setFocus();
         return;
     }
     devType = dev.toStdString();
     ui->devIn->setEnabled(false);
 
-    // 이상하게 nexutil c1은 드라이버가 뻣음..
+    // nexutil c1은 드라이버가 뻣음 -> k1 사용
     QString cmd = QString("svc wifi disable; "
                         "sleep 1.5; "
                         "ifconfig %1 up; "
@@ -105,16 +165,15 @@ void MainWindow::onStartButton()
                         "nexutil -s0x613 -i -v2").arg(dev);
 
     qDebug() << "[EXEC] " << cmd;
+
     QProcess p;
     p.start("su", QStringList() << "-c" << cmd);
     p.waitForFinished(3000);
 
     QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
     QString out = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
-
     if(!out.isEmpty()) qDebug() << "[OUT]" << out;
     if(!err.isEmpty()) qDebug() << "[ERR]" << err;
-
 
     // 채널 홉핑
     timer = new QTimer(this);
@@ -128,6 +187,15 @@ void MainWindow::onStartButton()
 void MainWindow::onStopButton()
 {
     if(!isRunning) return;
+    isRunning = false;
+
+    if(attacking)
+    {
+        attacking = false;
+        if(attackTimer) attackTimer->stop();
+        markAttackTarget(QString());
+        ui->attackBanner->setVisible(false);
+    }
 
     if(timer != nullptr && timer->isActive())
     {
@@ -141,23 +209,17 @@ void MainWindow::onStopButton()
         daemonProcess->terminate();
         daemonProcess->waitForFinished(2000);
     }
-    // todo: interface down , up
+
     QString dev = ui->devIn->currentText();
     QString cmd = QString("nexutil -m0; svc wifi enable").arg(dev);
 
     QProcess p;
     p.start("su", QStringList() << "-c" << cmd);
     p.waitForFinished(5000);
-
     QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
-    if(!err.isEmpty())
-    {
-        qDebug() << "[CLEANUP ERROR]" << err;
-    }
+    if(!err.isEmpty()) qDebug() << "[CLEANUP ERROR]" << err;
 
-    isRunning = false;
     ui->devIn->setEnabled(true);
-
 }
 
 void MainWindow::onRender() {}
@@ -173,6 +235,7 @@ void MainWindow::onDaemonOutput()
     if(validBytes == 0) return;
 
     const char* ptr = daemonBuffer.constData();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
 
     for(int i=0; i<validBytes; i+=packetSize)
     {
@@ -182,8 +245,8 @@ void MainWindow::onDaemonOutput()
         uint8_t type = event.type;
         QString displayMac;
         QString displayEssid;
-        QString pwr = QString::number(event.pwr);
-        QString ch = QString::number(event.ch);
+        int pwr = event.pwr;
+        int ch = 0;
 
         if(type == 0)
         {
@@ -191,6 +254,7 @@ void MainWindow::onDaemonOutput()
             prtMac(bssidStr, sizeof(bssidStr), event.bssid);
             displayMac = QString::fromUtf8(bssidStr);
             displayEssid = QString::fromUtf8(event.essid);
+            ch = event.ch;
         }
         else if(type == 1)
         {
@@ -203,54 +267,38 @@ void MainWindow::onDaemonOutput()
             QString linked = QString::fromUtf8(linkedBssidStr);
 
             if(linked == "FF:FF:FF:FF:FF:FF" || linked == "00:00:00:00:00:00")
-            {
                 displayEssid = "(Not Associated)";
-            }
             else
-            {
                 displayEssid = "To: " + linked;
-            }
-            ch = "-";
+            ch = 0;
         }
         else continue;
 
         if(displayMac.isEmpty() || displayMac == "00:00:00:00:00:00" || displayMac == "FF:FF:FF:FF:FF:FF") continue;
-        QString mapKey = QString::number(type) + "_" + displayMac;
-        QString uiMacText = displayMac;
-        if (type == 1)
+
+        const QString key = QString::number(type) + "_" + displayMac;
+        QStandardItem* item = itemByKey.value(key, nullptr);
+        if(item)
         {
-            uiMacText = "FROM: " + displayMac;
-        }
-        if (displayItem.contains(mapKey))
-        {
-            QListWidgetItem* item = displayItem[mapKey];
-            display* rowWidget = qobject_cast<display*>(ui->listWidget->itemWidget(item));
-            if (rowWidget) {
-                rowWidget->updateInfo(displayEssid, pwr, ch);
-            }
-            item->setData(Qt::UserRole + itemRole::MacAddress, displayMac);
-            item->setData(Qt::UserRole + itemRole::Essid, displayEssid);
-            item->setData(Qt::UserRole + itemRole::Channel, ch);
+            if(!displayEssid.isEmpty()) item->setData(displayEssid, dev::EssidRole);
+            if(pwr != 0 && pwr != 999)  item->setData(pwr, dev::PwrRole);
+            if(ch > 0)                  item->setData(ch, dev::ChRole);
+            item->setData(now, dev::LastSeenRole);
+            item->setData(false, dev::FadedRole);
         }
         else
         {
-            QListWidgetItem* newItem = new QListWidgetItem();
-            display* newWidget = new display(this);
-
-            newWidget->setInfo(displayMac, pwr, ch, displayEssid);
-            newItem->setSizeHint(newWidget->sizeHint());
-
-            newItem->setData(Qt::UserRole + itemRole::MacAddress, displayMac);
-            newItem->setData(Qt::UserRole + itemRole::Essid, displayEssid);
-            newItem->setData(Qt::UserRole + itemRole::Channel, ch);
-            newItem->setData(Qt::UserRole + itemRole::Type, type);
-
-            newItem->setHidden(type != currentViewMode);
-
-            ui->listWidget->addItem(newItem);
-            ui->listWidget->setItemWidget(newItem, newWidget);
-
-            displayItem.insert(mapKey, newItem);
+            item = new QStandardItem();
+            item->setData(displayMac,   dev::MacRole);
+            item->setData(displayEssid, dev::EssidRole);
+            item->setData(pwr,          dev::PwrRole);
+            item->setData(ch,           dev::ChRole);
+            item->setData((int)type,    dev::TypeRole);
+            item->setData(false,        dev::FadedRole);
+            item->setData(now,          dev::LastSeenRole);
+            item->setData(key,          dev::KeyRole);
+            devModel->appendRow(item);
+            itemByKey.insert(key, item);
         }
     }
     daemonBuffer.remove(0, validBytes);
@@ -279,14 +327,13 @@ void MainWindow::nextChannel()
 
 void MainWindow::showContents(const QPoint &pos)
 {
-    QListWidgetItem *item = ui->listWidget->itemAt(pos);
-    if(!item) return;
+    QModelIndex idx = ui->listView->indexAt(pos);
+    if(!idx.isValid()) return;
 
-    int targetCh = item->data(Qt::UserRole + itemRole::Channel).toInt();
-
-    QString bssid = item->data(Qt::UserRole + itemRole::MacAddress).toString();
-    QString essid = item->data(Qt::UserRole + itemRole::Essid).toString();
-    uint8_t itemType = item->data(Qt::UserRole + itemRole::Type).toInt();
+    int targetCh = idx.data(dev::ChRole).toInt();
+    QString bssid = idx.data(dev::MacRole).toString();
+    QString essid = idx.data(dev::EssidRole).toString();
+    uint8_t itemType = idx.data(dev::TypeRole).toInt();
 
     QMenu menu(this);
 
@@ -307,7 +354,7 @@ void MainWindow::showContents(const QPoint &pos)
     }
     QAction *stopAttackAct = menu.addAction("Stop Attack");
 
-    QAction *selectedAction = menu.exec(ui->listWidget->viewport()->mapToGlobal(pos));
+    QAction *selectedAction = menu.exec(ui->listView->viewport()->mapToGlobal(pos));
     QClipboard *clipboard = QApplication::clipboard();
     if(selectedAction == copyBssidAct)
     {
@@ -324,12 +371,12 @@ void MainWindow::showContents(const QPoint &pos)
             QStringList stationList;
             stationList << "Broadcast (FF:FF:FF:FF:FF:FF)";
 
-            for(int i=0; i<ui->listWidget->count(); i++)
+            for(int r=0; r < devModel->rowCount(); r++)
             {
-                QListWidgetItem* stItem = ui->listWidget->item(i);
-                if(stItem->data(Qt::UserRole+itemRole::Type).toInt() == 1)
+                QStandardItem* stItem = devModel->item(r);
+                if(stItem && stItem->data(dev::TypeRole).toInt() == 1)
                 {
-                    stationList << stItem->data(Qt::UserRole + itemRole::MacAddress).toString();
+                    stationList << stItem->data(dev::MacRole).toString();
                 }
             }
 
@@ -345,7 +392,7 @@ void MainWindow::showContents(const QPoint &pos)
 
             QVBoxLayout *layout = new QVBoxLayout(attackDialog);
 
-            QLabel *chLabel = new QLabel("Target Channel (goto):", attackDialog);
+            QLabel *chLabel = new QLabel("Target Channel:", attackDialog);
             attackChSpin = new QSpinBox(attackDialog);
             attackChSpin->setRange(1, 14);
             attackChSpin->setValue(11);
@@ -363,9 +410,14 @@ void MainWindow::showContents(const QPoint &pos)
             attackStCombo->addItems(stationList);
             layout->addWidget(attackStCombo);
 
-            QPushButton *okBtn = new QPushButton("Attack Start", attackDialog);
-            layout->addWidget(okBtn);
+            QHBoxLayout *btnRow = new QHBoxLayout();
+            QPushButton *cancelBtn = new QPushButton("취소", attackDialog);
+            QPushButton *okBtn = new QPushButton("선택₩", attackDialog);
+            btnRow->addWidget(cancelBtn);
+            btnRow->addWidget(okBtn);
+            layout->addLayout(btnRow);
 
+            connect(cancelBtn, &QPushButton::clicked, attackDialog, &QDialog::reject);
             connect(okBtn, &QPushButton::clicked, attackDialog, &QDialog::accept);
 
             connect(attackDialog, &QDialog::accepted, this, &MainWindow::onAttackDialogAccepted);
@@ -375,24 +427,14 @@ void MainWindow::showContents(const QPoint &pos)
     }
     else if(selectedAction == stopAttackAct)
     {
-        if(daemonProcess && daemonProcess->state() == QProcess::Running)
-        {
-            ST_IPC_CMD cmd;
-            memset(&cmd, 0, sizeof(ST_IPC_CMD));
-            cmd.action = Act::SNIFFING;
-            strncpy(cmd.interface, devType.c_str(), 15);
-            daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
-
-            if(timer && !timer->isActive()) timer->start(500);
-            ui->statusbar->showMessage("Attack Stopped", 3000);
-        }
+        stopAttack();
     }
 
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if(watched == ui->listWidget->viewport() && event->type() == QEvent::Gesture)
+    if(watched == ui->listView->viewport() && event->type() == QEvent::Gesture)
     {
         QGestureEvent *gestureEvent = static_cast<QGestureEvent*>(event);
         if(QGesture *gesture = gestureEvent->gesture(Qt::TapAndHoldGesture))
@@ -401,7 +443,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             if(tapAndHold->state() == Qt::GestureFinished)
             {
                 QPoint globalPos = tapAndHold->position().toPoint();
-                QPoint viewportPos = ui->listWidget->viewport()->mapFromGlobal(globalPos);
+                QPoint viewportPos = ui->listView->viewport()->mapFromGlobal(globalPos);
                 showContents(viewportPos);
                 return true;
             }
@@ -413,29 +455,107 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::onViewToggleChange(int index)
 {
     currentViewMode = index;
-    if(index == 0)
+    if(index == 0) ui->btnAP->setChecked(true);
+    else           ui->btnStation->setChecked(true);
+
+    if(devProxy) devProxy->setTypeFilter(index);
+    updateEmptyState();
+}
+
+void MainWindow::ageDevices()
+{
+    if(!devModel) return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 FADE_MS = 15000;   // 15초 -> 흐림
+    const qint64 REMOVE_MS = 45000; // 45초 -> 제거
+
+    for(int row = devModel->rowCount()-1; row >= 0; --row)
     {
-        ui->viewToggle->setStyleSheet(
-            "QSlider::groove:horizontal { border-radius: 12px; height: 24px; background: #e0e0e0; }"
-            "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #999999; width: 22px; height: 22px; margin: 1px; border-radius: 11px; }"
-            );
+        QStandardItem* it = devModel->item(row);
+        if(!it) continue;
+        const qint64 age = now - it->data(dev::LastSeenRole).toLongLong();
+        if(REMOVE_MS < age)
+        {
+            itemByKey.remove(it->data(dev::KeyRole).toString());
+            devModel->removeRow(row);
+        }
+        else
+        {
+            const bool faded = FADE_MS < age;
+            if(it->data(dev::FadedRole).toBool() != faded)
+                it->setData(faded, dev::FadedRole);
+        }
     }
-    else
+    updateEmptyState();
+}
+
+void MainWindow::updateEmptyState()
+{
+    const bool empty = (devProxy == nullptr) || (devProxy->rowCount() == 0);
+    ui->emptyLabel->setVisible(empty);
+    ui->listView->setVisible(!empty);
+}
+
+void MainWindow::updateScanButton()
+{
+    ui->scanButton->setText(isRunning ? "■ Stop" : "▶ Start");
+    ui->scanButton->setProperty("running", isRunning);
+    ui->scanButton->style()->unpolish(ui->scanButton);
+    ui->scanButton->style()->polish(ui->scanButton);
+}
+
+void MainWindow::stopAttack()
+{
+    if(daemonProcess && daemonProcess->state() == QProcess::Running)
     {
-        ui->viewToggle->setStyleSheet(
-            "QSlider::groove:horizontal { border-radius: 12px; height: 24px; background: #87CEFA; }"
-            "QSlider::handle:horizontal { background: #ffffff; border: 1px solid #999999; width: 22px; height: 22px; margin: 1px; border-radius: 11px; }"
-            );
+        ST_IPC_CMD cmd;
+        memset(&cmd, 0, sizeof(ST_IPC_CMD));
+        cmd.action = Act::SNIFFING;
+        strncpy(cmd.interface, devType.c_str(), 15);
+        daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
+
+        if(timer && !timer->isActive()) timer->start(500); // 채널 홉핑 재개
     }
 
-    for(int i=0; i<ui->listWidget->count(); i++)
+    attacking = false;
+    if(attackTimer) attackTimer->stop();
+    markAttackTarget(QString());
+    ui->attackBanner->setVisible(false);
+    ui->statusbar->showMessage("Attack Stopped", 3000);
+}
+
+void MainWindow::updateAttackBanner()
+{
+    if(!attacking)
     {
-        QListWidgetItem *item = ui->listWidget->item(i);
-        if(item)
-        {
-            int itemType = item->data(Qt::UserRole + itemRole::Type).toInt();
-            item->setHidden(itemType != currentViewMode);
-        }
+        ui->attackBanner->setVisible(false);
+        return;
+    }
+    const qint64 elapsed = (QDateTime::currentMSecsSinceEpoch() - attackStartMs) / 1000;
+    const QString dot = (elapsed % 2 == 0) ? "#c96a6a" : "#6e3a3a";
+    ui->attackLabel->setText(QString(
+        "<span style='color:%1; font-weight:700;'>●</span> "
+        "<span style='color:#d38a8a; font-weight:700;'>공격 중</span>  "
+        "<span style='color:#cfcfcf;'>%2</span> "
+        "<span style='color:#7a7a7a;'>→</span> <b style='color:#ffffff;'>%3</b>  "
+        "<span style='color:#a98a8a;'> %4초</span>")
+        .arg(dot, attackTypeName, attackTargetMac).arg(elapsed));
+    ui->attackBanner->setVisible(true);
+}
+
+void MainWindow::markAttackTarget(const QString& key)
+{
+    if(!devModel) return;
+    for(int row = 0; row < devModel->rowCount(); ++row)
+    {
+        QStandardItem* it = devModel->item(row);
+        if(it && it->data(dev::AttackingRole).toBool())
+            it->setData(false, dev::AttackingRole);
+    }
+    if(!key.isEmpty())
+    {
+        QStandardItem* it = itemByKey.value(key, nullptr);
+        if(it) it->setData(true, dev::AttackingRole);
     }
 }
 
@@ -469,19 +589,24 @@ void MainWindow::onAttackDialogAccepted()
     {
         daemonProcess->write((const char*)&cmd, sizeof(ST_IPC_CMD));
     }
-    ui->statusbar->showMessage("Attack started to " + pureMac, 3000);
+
+    attacking = true;
+    attackStartMs = QDateTime::currentMSecsSinceEpoch();
+    attackTypeName = (attackType == 1) ? "Deauth" : (attackType == 2) ? "Auth" : "CSA";
+    attackTargetMac = pureMac;
+    markAttackTarget("0_" + attackTargetBssid);
+    updateAttackBanner();
+    attackTimer->start(1000);
 }
 
 static QString dropPcapDaemon()
 {
     // AppDataLocation -> /data/data/<패키지명>/files
-    // QStandardPaths::writeableLocation -> 쓰기권한을 가지는 시스템 경로 QString
     QString targetDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir dir(targetDir);
 
     if(!dir.exists())
     {
-        // .은 현재 디렉터리
         dir.mkpath(".");
     }
 
@@ -490,10 +615,8 @@ static QString dropPcapDaemon()
 
     if(targetFile.exists())
     {
-        // 기존 파일 발견시 제거
         targetFile.remove();
     }
-    // assets에서 추출해옴
     QFile assetFile("assets:/suseong");
 
     // chmod 755
@@ -502,6 +625,36 @@ static QString dropPcapDaemon()
         QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
                                         QFileDevice::ReadGroup | QFileDevice::ExeGroup |
                                         QFileDevice::ReadOther | QFileDevice::ExeOther);
+        return targetPath;
+    }
+
+    return QString("");
+}
+
+static QString dropNexmonLib()
+{
+    QString targetDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir dir(targetDir);
+
+    if(!dir.exists())
+    {
+        dir.mkpath(".");
+    }
+
+    QString targetPath = targetDir + "/libnexmon.so";
+        QFile targetFile(targetPath);
+
+    if(targetFile.exists())
+    {
+        targetFile.remove();
+    }
+    QFile assetFile("assets:/libnexmon.so");
+
+    // chmod 644
+    if(assetFile.copy(targetPath))
+    {
+        QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                        QFileDevice::ReadGroup | QFileDevice::ReadOther);
         return targetPath;
     }
 

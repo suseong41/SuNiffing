@@ -1,2 +1,4 @@
 build/
 .qtcreator/
+.claude/
+.DS_Store

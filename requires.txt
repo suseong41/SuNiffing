@@ -1,3 +1,0 @@
-git clone https://github.com/the-tcpdump-group/libpcap
-git clone https://github.com/protocolbuffers/protobuf
-QT에서 armv8용 빌드
