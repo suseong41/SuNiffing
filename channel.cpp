@@ -39,11 +39,11 @@ void Channel::probe(const QString& dev, Band band)
 {
     Q_UNUSED(dev);
     
-    // 필터링
-    const QList<int> candidates = filterByBand(kCandidates, band);
+    // 선택 대역으로 후보를 걸러 프로브할 목록 구성 (candidates = 정적 전체 후보)
+    const QList<int> probeList = filterByBand(candidates, band);
 
     QString list;
-    for(int ch : candidates) list += QString::number(ch) + " ";
+    for(int ch : probeList) list += QString::number(ch) + " ";
 
     // 각 채널을 돌며 입력 채널과 실제 변경 채널 매칭 여부 검증
     QString script =
