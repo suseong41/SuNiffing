@@ -101,21 +101,18 @@ void DeviceDelegate::paint(QPainter* painter, const QStyleOptionViewItem& option
         pwrFont.setBold(true);
         painter->setFont(pwrFont);
         painter->setPen(selected ? option.palette.highlightedText().color() : pwrColor(pwr));
-        painter->drawText(QRect(rightRect.x(), rightRect.y(), rightRect.width(), rightRect.height()/2),
-                          Qt::AlignVCenter | Qt::AlignRight, QString("%1 dBm").arg(pwr));
+        painter->drawText(QRect(rightRect.x(), rightRect.y(), rightRect.width(), rightRect.height()/2), Qt::AlignVCenter | Qt::AlignRight, QString("%1 dBm").arg(pwr));
     }
     if (ch > 0)
     {
         painter->setFont(macFont);
         painter->setPen(subColor);
-        painter->drawText(QRect(rightRect.x(), rightRect.center().y(), rightRect.width(), rightRect.height()/2),
-                          Qt::AlignVCenter | Qt::AlignRight, QString("CH %1").arg(ch));
+        painter->drawText(QRect(rightRect.x(), rightRect.center().y(), rightRect.width(), rightRect.height()/2), Qt::AlignVCenter | Qt::AlignRight, QString("CH %1").arg(ch));
     }
     if (attacking)
     {
         painter->setOpacity(1.0);
-        painter->fillRect(QRect(option.rect.left(), option.rect.top(), 4, option.rect.height()),
-                          QColor(0x8f, 0x3a, 0x3a));
+        painter->fillRect(QRect(option.rect.left(), option.rect.top(), 4, option.rect.height()), QColor(0x8f, 0x3a, 0x3a));
     }
 
     painter->restore();

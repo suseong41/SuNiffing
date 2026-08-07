@@ -34,6 +34,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         mac.h
         mac.cpp
         devicelist.h devicelist.cpp
+        channel.h channel.cpp
         theme.h
         ipc_proto.h
     )

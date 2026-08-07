@@ -19,6 +19,7 @@
 #include <QSpinBox>
 #include <QComboBox>
 #include <QButtonGroup>
+#include <QRadioButton>
 #include <QStandardItemModel>
 #include <QHash>
 #include <QListView>
@@ -29,6 +30,7 @@
 #include <QStyle>
 #include "./mac.h"
 #include "./devicelist.h"
+#include "./channel.h"
 
 
 QT_BEGIN_NAMESPACE
@@ -63,9 +65,11 @@ private:
     QByteArray daemonBuffer;
 
     QTimer* timer = nullptr;
-    const QList<int> hopSeq = {1, 6, 11, 2, 7, 12, 3, 8, 13, 4, 9, 5, 10}; // 미국 ~11, 일본 ~14 어댑터 찾기 iw_list
-    int hopIdx = 0;
+    Channel hopper;
+    Channel::Band selectedBand = Channel::Band::Dual;
+    QDialog *bandDialog = nullptr;
     void nextChannel();
+    void onBandDialogAccepted();
 
     QStandardItemModel* devModel = nullptr;
     DeviceProxy* devProxy = nullptr;
