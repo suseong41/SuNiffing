@@ -155,8 +155,8 @@ void Runner::RXloop(const std::string& dev)
                     continue;
                 }
 
-                // CSA 채널 범위 검증 (csaTag 의 (uint8_t)channel 절단 방지)
-                if(cmd.action == Act::CSA && (cmd.channel < 1 || cmd.channel > 14))
+                // CSA 채널 범위 검증 (csaTag 의 (uint8_t)channel 절단 방지). 5GHz 포함 1~177.
+                if(cmd.action == Act::CSA && (cmd.channel < 1 || cmd.channel > 177))
                 {
                     fprintf(stderr, "[DAEMON] Blocked: Invalid CSA channel (%d)\n", cmd.channel);
                     fflush(stderr);

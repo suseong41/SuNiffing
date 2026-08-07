@@ -17,20 +17,12 @@ static bool hasNextPresent(uint32_t present)
 
 static int channelFromMhz(uint16_t freq)
 {
-    if (freq == 2412) return 1;
-    if (freq == 2417) return 2;
-    if (freq == 2422) return 3;
-    if (freq == 2427) return 4;
-    if (freq == 2432) return 5;
-    if (freq == 2437) return 6;
-    if (freq == 2442) return 7;
-    if (freq == 2447) return 8;
-    if (freq == 2452) return 9;
-    if (freq == 2457) return 10;
-    if (freq == 2462) return 11;
-    if (freq == 2467) return 12;
-    if (freq == 2472) return 13;
+    // 2.4GHz: ch = (freq-2407)/5 (1~13), 14는 2484 특수
     if (freq == 2484) return 14;
+    if (freq >= 2412 && freq <= 2472) return (freq - 2407) / 5;
+    // 5GHz: ch = (freq-5000)/5 (36~165 등). 5GHz 비콘엔 DS Param(태그3) 이 없어
+    //        라디오탭 주파수가 유일한 채널 소스라 이 매핑이 꼭 필요.
+    if (freq >= 5160 && freq <= 5885) return (freq - 5000) / 5;
     return 0;
 }
 

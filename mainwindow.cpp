@@ -142,8 +142,7 @@ void MainWindow::runDaemon()
 
 void MainWindow::onStartButton()
 {
-    // 앱: 데몬 실행
-    // 데몬: 모니터 모드 실행
+    // 앱: 밴드 선택 팝업 -> (선택 시) 모니터 모드 진입 + 데몬 실행
     if(isRunning) return;
 
     QString dev = ui->devIn->currentText().trimmed();
@@ -155,6 +154,71 @@ void MainWindow::onStartButton()
     }
     devType = dev.toStdString();
     ui->devIn->setEnabled(false);
+
+    // 스캔 대역 선택 팝업. 기존 공격 다이얼로그(QDialog+QVBoxLayout, 취소/선택,
+    // WA_DeleteOnClose, 비모달 open())와 동일한 구성 패턴을 따름.
+    bandDialog = new QDialog(this);
+    bandDialog->setAttribute(Qt::WA_DeleteOnClose);
+    bandDialog->setWindowTitle("스캔 대역 선택");
+    bandDialog->setMinimumWidth(320);
+
+    QVBoxLayout *layout = new QVBoxLayout(bandDialog);
+    layout->addWidget(new QLabel("캡처할 주파수 대역을 선택하세요.", bandDialog));
+
+    QButtonGroup *bandGroup = new QButtonGroup(bandDialog);
+
+    auto addBandRow = [&](const QString& title, const QString& desc, int id) -> QRadioButton* {
+        QRadioButton *rb = new QRadioButton(title, bandDialog);
+        rb->setMinimumHeight(34);
+        bandGroup->addButton(rb, id);
+        layout->addWidget(rb);
+
+        QLabel *sub = new QLabel(desc, bandDialog);
+        sub->setStyleSheet("color:#8a8a8a; font-size:11px; margin-left:24px; margin-bottom:6px;");
+        sub->setWordWrap(true);
+        layout->addWidget(sub);
+        return rb;
+    };
+
+    addBandRow("2.4 GHz", "채널 1~13 · 스윕이 가장 빠름", (int)Channel::Band::Only24);
+    addBandRow("5 GHz", "채널 36~165(DFS 포함) · 5GHz AP 전용", (int)Channel::Band::Only5);
+    QRadioButton *rbDual = addBandRow("Dual (2.4 + 5 GHz)", "전체 대역 · 기본값", (int)Channel::Band::Dual);
+    rbDual->setChecked(true);
+    selectedBand = Channel::Band::Dual;
+
+    connect(bandGroup, &QButtonGroup::idClicked, this, [this](int id){
+        selectedBand = (Channel::Band)id;
+    });
+
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    QPushButton *cancelBtn = new QPushButton("취소", bandDialog);
+    QPushButton *okBtn = new QPushButton("선택", bandDialog);
+    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(okBtn);
+    layout->addLayout(btnRow);
+
+    connect(cancelBtn, &QPushButton::clicked, bandDialog, &QDialog::reject);
+    connect(okBtn, &QPushButton::clicked, bandDialog, &QDialog::accept);
+    connect(bandDialog, &QDialog::accepted, this, &MainWindow::onBandDialogAccepted);
+    connect(bandDialog, &QDialog::rejected, this, [this]{
+        ui->devIn->setEnabled(true);
+        updateScanButton(); // isRunning 여전히 false -> Start로 복귀
+    });
+
+    bandDialog->open();
+}
+
+void MainWindow::onBandDialogAccepted()
+{
+    QString dev = QString::fromStdString(devType);
+
+    // 즉시 피드백: 아래 nexutil/프로브 블로킹 구간 전에 Stop 상태로 먼저 반영
+    // (기존 onStartButton에 있던 즉시 피드백 로직이 실제 블로킹 지점을 따라 이동함).
+    ui->scanButton->setText("■ Stop");
+    ui->scanButton->setProperty("running", true);
+    ui->scanButton->style()->unpolish(ui->scanButton);
+    ui->scanButton->style()->polish(ui->scanButton);
+    ui->scanButton->repaint();
 
     // nexutil c1은 드라이버가 뻣음 -> k1 사용
     QString cmd = QString("svc wifi disable; "
@@ -175,6 +239,10 @@ void MainWindow::onStartButton()
     if(!out.isEmpty()) qDebug() << "[OUT]" << out;
     if(!err.isEmpty()) qDebug() << "[ERR]" << err;
 
+    // 지원 채널 프로브(모니터 진입 후, 선택 대역만) -> hopSeq 구성. 실패 시 기본 목록 폴백.
+    hopper.probe(dev, selectedBand);
+    hopper.reset();
+
     // 채널 홉핑
     timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, &MainWindow::nextChannel);
@@ -182,6 +250,7 @@ void MainWindow::onStartButton()
 
     runDaemon();
     isRunning = true;
+    updateScanButton();
 }
 
 void MainWindow::onStopButton()
@@ -317,10 +386,7 @@ void MainWindow::onDaemonError()
 
 void MainWindow::nextChannel()
 {
-    int ch = hopSeq[hopIdx];
-    QString cmd = QString("nexutil -k%1").arg(ch);
-    QProcess::startDetached("su", QStringList() << "-c" << cmd);
-    hopIdx = (hopIdx+1) % hopSeq.size();
+    int ch = hopper.next();
     QString curCh = QString("%1").arg(ch, 2, 10, QChar('0'));
     ui->currentCh->setText(QString("CH:%1").arg(curCh));
 }
@@ -394,7 +460,7 @@ void MainWindow::showContents(const QPoint &pos)
 
             QLabel *chLabel = new QLabel("Target Channel:", attackDialog);
             attackChSpin = new QSpinBox(attackDialog);
-            attackChSpin->setRange(1, 14);
+            attackChSpin->setRange(1, 177);
             attackChSpin->setValue(11);
             layout->addWidget(chLabel);
             layout->addWidget(attackChSpin);
@@ -412,7 +478,7 @@ void MainWindow::showContents(const QPoint &pos)
 
             QHBoxLayout *btnRow = new QHBoxLayout();
             QPushButton *cancelBtn = new QPushButton("취소", attackDialog);
-            QPushButton *okBtn = new QPushButton("선택₩", attackDialog);
+            QPushButton *okBtn = new QPushButton("선택", attackDialog);
             btnRow->addWidget(cancelBtn);
             btnRow->addWidget(okBtn);
             layout->addLayout(btnRow);
@@ -563,11 +629,10 @@ void MainWindow::onAttackDialogAccepted()
 {
     if (!attackStCombo || !attackChSpin) return;
     QString targetStStr = attackStCombo->currentText();
+    // 2.4Ghz / 5Ghz 구분은 1xxx dxxx chanspec 대역으로 구분하는듯?
     int chToMove = attackChSpin->value();
-
     if(timer && timer->isActive()) timer->stop();
-    QString chCmd = QString("nexutil -k%1").arg(attackTargetCh);
-    QProcess::startDetached("su", QStringList() << "-c" << chCmd);
+    hopper.setChannel(attackTargetCh);
     ui->currentCh->setText(QString("CH: %1 [is attacking]").arg(attackTargetCh));
 
     QString pureMac = targetStStr;
