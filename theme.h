@@ -64,6 +64,12 @@ inline void applyDarkTheme(QApplication& app)
         #segToggle QPushButton { border:none; background:transparent; color:#9a9a9a; padding:4px 0; border-radius:6px; font-weight:600; }
         #segToggle QPushButton:hover:!checked { color:#dddddd; }
         #segToggle QPushButton:checked { background:#3779c2; color:#ffffff; }
+
+        /* 스캔 대역 선택 다이얼로그 */
+        #bandDialog            { background:#1e1e1e; }
+        #bandCard              { background:#2a2a2a; border:1px solid #454545; border-radius:12px; }
+        #bandTitle             { color:#e8e8e8; font-size:14px; font-weight:600; padding:2px 0 10px 0; }
+        #bandCard QRadioButton { color:#e0e0e0; font-size:13px; font-weight:600; padding:4px 2px; }
     
     )");
 }

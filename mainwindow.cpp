@@ -2,6 +2,7 @@
 #include "./device.h"
 #include "./ui_mainwindow.h"
 #include "./ipc_proto.h"
+#include <QFrame>
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -158,12 +159,24 @@ void MainWindow::onStartButton()
     // 스캔 대역 선택 팝업. 기존 공격 다이얼로그(QDialog+QVBoxLayout, 취소/선택,
     // WA_DeleteOnClose, 비모달 open())와 동일한 구성 패턴을 따름.
     bandDialog = new QDialog(this);
+    bandDialog->setObjectName("bandDialog");
     bandDialog->setAttribute(Qt::WA_DeleteOnClose);
     bandDialog->setWindowTitle("스캔 대역 선택");
-    bandDialog->setMinimumWidth(320);
+    bandDialog->setMinimumWidth(340);
 
-    QVBoxLayout *layout = new QVBoxLayout(bandDialog);
-    layout->addWidget(new QLabel("캡처할 주파수 대역을 선택하세요.", bandDialog));
+    // 배경과 구분되도록 내용을 살짝 밝은 카드(QFrame)에 담음
+    QVBoxLayout *outer = new QVBoxLayout(bandDialog);
+    outer->setContentsMargins(12, 12, 12, 12);
+    QFrame *bandCard = new QFrame(bandDialog);
+    bandCard->setObjectName("bandCard");
+    outer->addWidget(bandCard);
+
+    QVBoxLayout *layout = new QVBoxLayout(bandCard);
+    layout->setContentsMargins(20, 18, 20, 16);
+    layout->setSpacing(4);
+    QLabel *bandTitle = new QLabel("캡처할 주파수 대역을 선택하세요.", bandCard);
+    bandTitle->setObjectName("bandTitle");
+    layout->addWidget(bandTitle);
 
     QButtonGroup *bandGroup = new QButtonGroup(bandDialog);
 
@@ -181,7 +194,7 @@ void MainWindow::onStartButton()
     };
 
     addBandRow("2.4 GHz", "채널 1~13 · 스윕이 가장 빠름", (int)Channel::Band::Only24);
-    addBandRow("5 GHz", "채널 36~165(DFS 포함) · 5GHz AP 전용", (int)Channel::Band::Only5);
+    addBandRow("5 GHz", "채널 36~165 · 5GHz AP 전용", (int)Channel::Band::Only5);
     QRadioButton *rbDual = addBandRow("Dual (2.4 + 5 GHz)", "전체 대역 · 기본값", (int)Channel::Band::Dual);
     rbDual->setChecked(true);
     selectedBand = Channel::Band::Dual;
@@ -191,8 +204,11 @@ void MainWindow::onStartButton()
     });
 
     QHBoxLayout *btnRow = new QHBoxLayout();
+    btnRow->setContentsMargins(0, 12, 0, 0);
+    btnRow->setSpacing(10);
     QPushButton *cancelBtn = new QPushButton("취소", bandDialog);
     QPushButton *okBtn = new QPushButton("선택", bandDialog);
+    okBtn->setDefault(true);
     btnRow->addWidget(cancelBtn);
     btnRow->addWidget(okBtn);
     layout->addLayout(btnRow);
