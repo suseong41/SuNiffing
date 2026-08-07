@@ -156,8 +156,6 @@ void MainWindow::onStartButton()
     devType = dev.toStdString();
     ui->devIn->setEnabled(false);
 
-    // 스캔 대역 선택 팝업. 기존 공격 다이얼로그(QDialog+QVBoxLayout, 취소/선택,
-    // WA_DeleteOnClose, 비모달 open())와 동일한 구성 패턴을 따름.
     bandDialog = new QDialog(this);
     bandDialog->setObjectName("bandDialog");
     bandDialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -228,16 +226,19 @@ void MainWindow::onBandDialogAccepted()
 {
     QString dev = QString::fromStdString(devType);
 
-    // 즉시 피드백: 아래 nexutil/프로브 블로킹 구간 전에 Stop 상태로 먼저 반영
-    // (기존 onStartButton에 있던 즉시 피드백 로직이 실제 블로킹 지점을 따라 이동함).
     ui->scanButton->setText("■ Stop");
     ui->scanButton->setProperty("running", true);
     ui->scanButton->style()->unpolish(ui->scanButton);
     ui->scanButton->style()->polish(ui->scanButton);
     ui->scanButton->repaint();
 
-    // nexutil c1은 드라이버가 뻣음 -> k1 사용
-    QString cmd = QString("svc wifi disable; "
+    // nexutil을 /data/local/tmp로 배포(매번 갱신)해 self-contained. c1은 드라이버가 뻣음 -> k1 사용
+    QString nexutilPath = dropNexutil();
+    QString pre;
+    if(!nexutilPath.isEmpty())
+        pre = QString("cp %1 /data/local/tmp/nexutil; chmod 755 /data/local/tmp/nexutil; ").arg(nexutilPath);
+
+    QString cmd = pre + QString("svc wifi disable; "
                         "sleep 1.5; "
                         "ifconfig %1 up; "
                         "nexutil -d; "
@@ -736,6 +737,37 @@ static QString dropNexmonLib()
     {
         QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
                                         QFileDevice::ReadGroup | QFileDevice::ReadOther);
+        return targetPath;
+    }
+
+    return QString("");
+}
+
+static QString dropNexutil()
+{
+    QString targetDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir dir(targetDir);
+
+    if(!dir.exists())
+    {
+        dir.mkpath(".");
+    }
+
+    QString targetPath = targetDir + "/nexutil";
+    QFile targetFile(targetPath);
+
+    if(targetFile.exists())
+    {
+        targetFile.remove();
+    }
+    QFile assetFile("assets:/nexutil");
+
+    // chmod 755 (실행 파일)
+    if(assetFile.copy(targetPath))
+    {
+        QFile::setPermissions(targetPath, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                                        QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                                        QFileDevice::ReadOther | QFileDevice::ExeOther);
         return targetPath;
     }
 

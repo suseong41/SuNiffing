@@ -102,4 +102,5 @@ private:
 
 static QString dropPcapDaemon();
 static QString dropNexmonLib();
+static QString dropNexutil();
 static ST_MAC qstringToMac(const QString& macStr);

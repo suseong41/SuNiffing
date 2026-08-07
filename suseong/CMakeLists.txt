@@ -38,5 +38,6 @@ elseif(ANDROID)
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:suseong> ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets/suseong
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/libnexmon.so ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets/libnexmon.so
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/nexutil ${CMAKE_CURRENT_SOURCE_DIR}/../android/assets/nexutil
     )
 endif()
