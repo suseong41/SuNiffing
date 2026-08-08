@@ -5,6 +5,10 @@
 A Qt app that scans nearby WiFi using nexmon monitor mode on the Galaxy S10,
 and performs security testing (deauth, CSA, etc.) in authorized environments.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="SuNiffing screenshot" width="300">
+</p>
+
 > ⚠️ Use only on networks you **own or have explicit authorization** to test.
 > Unauthorized use is illegal, and all responsibility lies with the user.
 

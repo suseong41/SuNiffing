@@ -5,6 +5,10 @@
 Galaxy S10의 nexmon 모니터 모드로 주변 WiFi를 스캔하고,
 인가된 환경에서 보안 점검(deauth·CSA 등)을 수행하는 Qt 앱.
 
+<p align="center">
+  <img src="docs/screenshot.png" alt="SuNiffing 실행 화면" width="300">
+</p>
+
 > ⚠️ 본인 소유이거나 **명시적으로 허가받은** 네트워크에서만 사용하십시오.
 > 무단 사용은 불법이며 그 책임은 전적으로 사용자에게 있습니다.
 
