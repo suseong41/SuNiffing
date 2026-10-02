@@ -16,9 +16,13 @@ Galaxy S10의 nexmon 모니터 모드로 주변 WiFi를 스캔하고,
 
 ### 준비물
 
-* Galaxy s10 series (s10 lite는 제외)
-* root 권한
+* Galaxy S10 시리즈 (S10 Lite 제외) — BCM4375b1
+* root 권한 (Magisk)
 * SELinux 비활성화(permissive)
+* **nexmon 패치 Wi-Fi 펌웨어** — `/vendor/firmware/bcmdhd_sta.bin_b1`에 패치본이 설치돼 있어야 합니다 (S10용 nexmon Magisk 모듈로 설치). 이 앱의 모니터 모드는 이 펌웨어에 의존합니다.
+  * ⚠️ 패치 펌웨어는 특정 베이스 버전(18.41.x)에 묶여 있습니다. **기기의 Wi-Fi 펌웨어 버전과 맞아야** 하며, 맞지 않으면 모니터 모드가 뜨지 않습니다.
+
+> `nexutil`·`libnexmon.so`는 **앱에 번들**되어 실행 시 `/data/local/tmp`로 자동 배포됩니다 — 따로 옮길 필요가 없습니다. 사용자가 별도로 준비할 전제는 위 **패치 펌웨어(Magisk 모듈)** 하나뿐입니다.
 
 ---
 

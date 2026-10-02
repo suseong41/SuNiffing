@@ -16,9 +16,13 @@ and performs security testing (deauth, CSA, etc.) in authorized environments.
 
 ### Requirements
 
-* Galaxy S10 series (S10 Lite excluded)
-* Root access
+* Galaxy S10 series (S10 Lite excluded) — BCM4375b1
+* Root access (Magisk)
 * SELinux permissive
+* **nexmon-patched Wi-Fi firmware** — a patched `bcmdhd_sta.bin_b1` installed at `/vendor/firmware/` (via an S10 nexmon Magisk module). The app's monitor mode depends on it.
+  * ⚠️ The patched firmware is tied to a specific base version (18.41.x). It must match your device's Wi-Fi firmware version, or monitor mode will not initialize.
+
+> `nexutil` and `libnexmon.so` are **bundled in the app** and auto-deployed to `/data/local/tmp` at runtime — no manual copying needed. The only separate prerequisite a user must set up is the **patched firmware (Magisk module)** above.
 
 ---
 

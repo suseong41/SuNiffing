@@ -93,7 +93,7 @@ int Channel::next()
 {
     if(m_hopSeq.isEmpty()) m_hopSeq = defaultHops;
     int ch = m_hopSeq[m_hopIdx];
-    QString cmd = QString("nexutil -k%1; nexutil -s0x613 -i -v2").arg(ch);
+    QString cmd = QString("nexutil -k%1; nexutil -m2").arg(ch);
     QProcess::startDetached("su", QStringList() << "-c" << cmd);
     m_hopIdx = (m_hopIdx + 1) % m_hopSeq.size();
     return ch;
@@ -102,6 +102,6 @@ int Channel::next()
 // 공격용 채널 셋팅
 void Channel::setChannel(int ch)
 {
-    QString cmd = QString("nexutil -k%1; nexutil -s0x613 -i -v2").arg(ch);
+    QString cmd = QString("nexutil -k%1; nexutil -m2").arg(ch);
     QProcess::startDetached("su", QStringList() << "-c" << cmd);
 }

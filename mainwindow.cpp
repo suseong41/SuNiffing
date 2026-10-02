@@ -243,7 +243,7 @@ void MainWindow::onBandDialogAccepted()
                         "ifconfig %1 up; "
                         "nexutil -d; "
                         "nexutil -k1; "
-                        "nexutil -s0x613 -i -v2").arg(dev);
+                        "nexutil -m2").arg(dev);
 
     qDebug() << "[EXEC] " << cmd;
 
