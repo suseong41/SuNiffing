@@ -26,6 +26,20 @@ and performs security testing (deauth, CSA, etc.) in authorized environments.
 
 ---
 
+### Installing the firmware (Magisk module)
+
+The patched firmware must land in `/vendor` (a read-only partition), so install it as a **Magisk module**.
+
+1. In the **Magisk app → Modules → Install**, flash the firmware module (`nexmon-s10-fw-*.zip`)
+2. Reboot
+3. Verify: `su -c 'grep -ac nexmon /vendor/firmware/bcmdhd_sta.bin_b1'` → `1` means OK
+
+> The module overlays the file without touching the real partition, so disabling it reverts the change.
+> On a dm-verity-disabled device you can instead copy directly into `/vendor`, then `svc wifi disable; svc wifi enable`.
+> ⚠️ The firmware must match the device's stock **18.41.x base** (a version mismatch means monitor mode won't initialize).
+
+---
+
 ### Features
 
 * Scan — real-time discovery of nearby APs / STATIONs

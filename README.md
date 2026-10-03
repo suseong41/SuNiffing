@@ -26,6 +26,20 @@ Galaxy S10의 nexmon 모니터 모드로 주변 WiFi를 스캔하고,
 
 ---
 
+### 패치 펌웨어 설치
+
+패치 펌웨어는 읽기전용 파티션인 `/vendor`에 들어가야 하므로 **Magisk 모듈**로 올립니다.
+
+1. 패치 펌웨어 Magisk 모듈(`nexmon-s10-fw-*.zip`)을 **Magisk 앱 → 모듈 → 설치**에서 flash
+2. 재부팅
+3. 확인: `su -c 'grep -ac nexmon /vendor/firmware/bcmdhd_sta.bin_b1'` → `1`이면 정상
+
+> 모듈은 실제 파티션을 건드리지 않고 덮어 마운트하므로, 비활성화하면 원복됩니다.
+> dm-verity를 끈 기기라면 `/vendor`에 직접 복사 후 `svc wifi disable; svc wifi enable`로도 적용됩니다.
+> ⚠️ 펌웨어는 기기 스톡 **18.41.x 베이스**와 맞아야 합니다(버전 불일치 시 모니터 모드가 뜨지 않음).
+
+---
+
 ### 기능
 
 * 스캔 — 주변 AP / STATION 실시간 탐지
