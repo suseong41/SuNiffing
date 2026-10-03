@@ -8,9 +8,10 @@ and performs security testing (deauth, CSA, etc.) in authorized environments.
 <p align="center">
   <img src="docs/screenshot.png" alt="SuNiffing screenshot" width="300">
 </p>
-<p align="center">
-  <video src="https://github.com/suseong41/SuNiffing/raw/main/docs/Suniffing_Test.mp4" controls width="600"></video>
-</p>
+
+https://github.com/user-attachments/assets/6d54f791-5688-4e62-b4b7-b3c82dc75ab5
+
+
 
 > ⚠️ Use only on networks you **own or have explicit authorization** to test.
 > Unauthorized use is illegal, and all responsibility lies with the user.
