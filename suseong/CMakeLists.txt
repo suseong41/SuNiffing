@@ -12,6 +12,7 @@ set(SOURCES
     ../wireless.h ../wireless.cpp
     ../radiotap.h ../radiotap.cpp
     ../mac.h ../mac.cpp
+    ../security.h ../security.cpp
 )
 
 add_executable(suseong ${SOURCES})
@@ -26,6 +27,13 @@ if(APPLE)
     target_link_libraries(suseong PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../libpcap/build/Qt_6_10_2_for_macOS-Debug/libpcap.a")
 elseif(ANDROID)
     target_link_libraries(suseong PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../libpcap/build/Qt_6_10_2_for_Android_arm64_v8a-Debug/libpcap.a")
+endif()
+
+# Release 빌드: 데몬 바이너리 strip
+if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
+    add_custom_command(TARGET suseong POST_BUILD
+        COMMAND "${CMAKE_STRIP}" --strip-all $<TARGET_FILE:suseong>
+    )
 endif()
 
 # POST_BUILD

@@ -333,6 +333,9 @@ void MainWindow::onDaemonOutput()
         QString displayEssid;
         int pwr = event.pwr;
         int ch = 0;
+        QString Security;
+        int pmf = 0;
+        bool weak = false;
 
         if(type == 0)
         {
@@ -341,6 +344,9 @@ void MainWindow::onDaemonOutput()
             displayMac = QString::fromUtf8(bssidStr);
             displayEssid = QString::fromUtf8(event.essid);
             ch = event.ch;
+            Security = QString::fromUtf8(event.security);
+            pmf = event.pmf;
+            weak = (event.weak != 0);
         }
         else if(type == 1)
         {
@@ -371,6 +377,9 @@ void MainWindow::onDaemonOutput()
             if(ch > 0)                  item->setData(ch, dev::ChRole);
             item->setData(now, dev::LastSeenRole);
             item->setData(false, dev::FadedRole);
+            item->setData(Security, dev::SecurityRole);
+            item->setData(pmf, dev::PmfRole);
+            item->setData(weak, dev::WeakRole);
         }
         else
         {
@@ -383,6 +392,9 @@ void MainWindow::onDaemonOutput()
             item->setData(false,        dev::FadedRole);
             item->setData(now,          dev::LastSeenRole);
             item->setData(key,          dev::KeyRole);
+            item->setData(Security, dev::SecurityRole);
+            item->setData(pmf, dev::PmfRole);
+            item->setData(weak, dev::WeakRole);
             devModel->appendRow(item);
             itemByKey.insert(key, item);
         }

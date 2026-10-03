@@ -66,8 +66,9 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    lintOptions {
+ lintOptions {
         abortOnError = false
+        disable 'ExpiredTargetSdkVersion'
     }
 
     aaptOptions {
@@ -78,7 +79,9 @@ android {
     defaultConfig {
         resConfig "en"
         minSdkVersion qtMinSdkVersion
-        targetSdkVersion qtTargetSdkVersion
+        // targetSdk>=30이면 앱이 네트워크 인터페이스 열거 불가(wlan0 안 보임) -> pcap_findalldevs 실패.
+        // 사이드로드 개인 앱이라 레거시(<=29) 동작으로 낮춰 인터페이스 가시성 확보.
+        targetSdkVersion 29
         ndk.abiFilters = qtTargetAbiList.split(",")
     }
 }

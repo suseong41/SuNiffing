@@ -3,6 +3,7 @@
 #include "mac.h"
 #include "radiotap.h"
 #include "wireless.h"
+#include "security.h"
 
 Runner::Runner()
 {
@@ -272,6 +273,13 @@ void Runner::RXloop(const std::string& dev)
                     }
                     else event.ch = 0;
                 }
+                
+                //보안 정보 파싱: capability는 tagStart 바로 앞 2바이트(LE)
+                uint16_t cap = (uint16_t)(tagStart[-2] | (tagStart[-1] << 8));
+                ST_SECURITY sec = getSecurity(tagStart, (int)tagLen, cap);
+                memcpy(event.security, sec.label, sizeof(event.security));
+                event.pmf = sec.pmf;
+                event.weak = sec.weak;
 
                 std::lock_guard<std::mutex> outLock(outMutex);
                 fwrite(&event, sizeof(ST_IPC_EVENT), 1, stdout);

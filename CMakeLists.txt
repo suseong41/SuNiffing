@@ -37,6 +37,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         channel.h channel.cpp
         theme.h
         ipc_proto.h
+        security.h security.cpp
     )
 
 # 안드로이드 빌드에 경우 패키지 소스 지정
@@ -72,16 +73,6 @@ endif()
 
 # pcap 헤더 파일 포함 | pcap 소스 파일에서 VERSION 파일 이름 변경 필요
 target_include_directories(SuNiffing PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../libpcap")
-
-
-# llvm-strip
-if(NOT CMAKE_BUILD_TYPE MATCHES Debug)
-    add_custom_command(TARGET suseong POST_BUILD
-        COMMAND llvm-strip --strip-all $<TARGET_FILE:suseong>
-    )
-endif()
-
-
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

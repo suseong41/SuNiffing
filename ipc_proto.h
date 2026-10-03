@@ -33,6 +33,9 @@ struct ST_IPC_EVENT
     int16_t pwr;
     int16_t ch;
     char message[64];
+    char security[24]; // 보안 라벨
+    uint8_t pmf; // 0 없음 | 1 capable | 2 required
+    uint8_t weak; // 1 = 취약
 };
 
 #pragma pack(pop)

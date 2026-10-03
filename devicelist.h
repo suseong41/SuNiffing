@@ -14,7 +14,10 @@ enum Role
     FadedRole,                    // bool (에이징)
     LastSeenRole,                 // qint64 (ms epoch)
     KeyRole,                      // QString ("type_mac")
-    AttackingRole                 // bool (현재 공격 대상)
+    AttackingRole,                // bool (현재 공격 대상)
+    SecurityRole,                 // Qstring (보안 라벨)
+    PmfRole,                      // int (0 없음 / 1 capable / 2 required)
+    WeakRole                      // bool (취약)
 };
 }
 
