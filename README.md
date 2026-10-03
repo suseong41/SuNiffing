@@ -8,9 +8,11 @@ Galaxy S10의 nexmon 모니터 모드로 주변 WiFi를 스캔하고,
 <p align="center">
   <img src="docs/screenshot.png" alt="SuNiffing 실행 화면" width="300">
 </p>
-<p align="center">
-  <video src="https://github.com/suseong41/SuNiffing/raw/main/docs/Suniffing_Test.mp4" controls width="600"></video>
-</p>
+
+
+https://github.com/user-attachments/assets/aa80a5b3-6a33-4c0f-a388-5021477e81fb
+
+
 
 > ⚠️ 본인 소유이거나 **명시적으로 허가받은** 네트워크에서만 사용하십시오.
 > 무단 사용은 불법이며 그 책임은 전적으로 사용자에게 있습니다.
